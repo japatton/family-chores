@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Family Chores</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        background: linear-gradient(135deg, #f5f3ff, #ede9fe);
+        color: #1e1b4b;
+        min-height: 100vh;
+        margin: 0;
+        padding: 2rem;
+        display: grid;
+        place-items: center;
+      }
+      main {
+        background: white;
+        border-radius: 1.5rem;
+        padding: 2rem 2.5rem;
+        box-shadow: 0 20px 40px -20px rgba(79, 70, 229, 0.25);
+        max-width: 32rem;
+      }
+      h1 { font-size: 2rem; margin: 0 0 0.5rem; }
+      p { line-height: 1.6; margin: 0.75rem 0; }
+      code { background: #ede9fe; padding: 0.125rem 0.5rem; border-radius: 0.375rem; }
+      .pill {
+        display: inline-block;
+        background: #4f46e5;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 999px;
+        font-size: 0.875rem;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="pill">Milestone 1</span>
+      <h1>Family Chores</h1>
+      <p>The backend is running. The SPA will ship in milestone 6.</p>
+      <p>Probe the health endpoint: <code>GET /api/health</code></p>
+    </main>
+  </body>
+</html>

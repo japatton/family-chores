@@ -1,0 +1,27 @@
+name: Family Chores
+version: "0.1.0"
+slug: family_chores
+description: Family chore tracking and rewards, with HA entity bridging.
+arch:
+  - amd64
+  - aarch64
+  - armv7
+init: false
+startup: application
+boot: auto
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:broom
+panel_title: Family Chores
+hassio_api: true
+hassio_role: default
+homeassistant_api: true
+auth_api: true
+options:
+  log_level: info
+  week_starts_on: monday
+  sound_default: false
+schema:
+  log_level: list(debug|info|warning|error)
+  week_starts_on: list(monday|sunday)
+  sound_default: bool

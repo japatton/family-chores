@@ -1,0 +1,296 @@
+# DECISIONS — Family Chores add-on
+
+Living design notes. New entries go at the top of each section; significant changes get a dated entry in §10 Changelog.
+
+---
+
+## 0. Project snapshot
+
+**What we're building:** a Home Assistant Add-on (single Docker container, Ingress-served FastAPI + React SPA) that tracks family chores, rewards, and streaks. SQLite is the source of truth; a one-way bridge mirrors a curated subset of state into HA entities so the data is usable from automations and Lovelace. An optional thin Lit card reads those entities for an at-a-glance dashboard widget.
+
+**Primary target:** a wall-mounted 10" tablet (1280×800, touch-only, landscape). UI must also work on phone and desktop, but the tablet is the design anchor.
+
+**Non-goals (v1):** reward catalogue, per-kid PIN, TTS, photo-proof, multi-household sync. See §7 for where each future hook plugs in.
+
+---
+
+## 1. File tree (confirmed, one deviation)
+
+Working directory is `/Users/jasonpatton/ToDoChore/`. The prompt shows `family-chores/` as the tree root — since the user already set up `ToDoChore/` as the project directory, we treat **that** as root and collapse the `family-chores/` level. The add-on's `slug` is still `family_chores` per §9 of the spec.
+
+```
+ToDoChore/
+├── config.yaml                   # HA add-on manifest
+├── Dockerfile
+├── build.yaml                    # multi-arch base image map
+├── run.sh                        # entrypoint (no s6, single process)
+├── icon.png, logo.png            # placeholders (replace before release)
+├── README.md
+├── CHANGELOG.md
+├── DOCS.md                       # Add-on "Documentation" tab
+├── INSTALL.md
+├── DECISIONS.md                  # this file
+├── PROMPT.md                     # verbatim copy of build prompt
+├── docker-compose.yml            # local-only dev (non-HA)
+├── backend/
+│   ├── pyproject.toml
+│   ├── alembic.ini
+│   ├── src/family_chores/
+│   │   ├── __main__.py           # uvicorn entrypoint
+│   │   ├── app.py                # FastAPI factory
+│   │   ├── config.py             # loads /data/options.json
+│   │   ├── scheduler.py          # APScheduler jobs
+│   │   ├── api/                  # routers: members, chores, instances,
+│   │   │                         #   auth, admin, ws, health
+│   │   ├── core/                 # pure domain logic
+│   │   │   ├── recurrence.py
+│   │   │   ├── instances.py
+│   │   │   ├── streaks.py
+│   │   │   ├── points.py
+│   │   │   └── time.py           # tz helpers, week-anchor math
+│   │   ├── db/
+│   │   │   ├── base.py           # engine/session
+│   │   │   ├── models.py
+│   │   │   └── migrations/       # Alembic versions
+│   │   ├── ha/
+│   │   │   ├── client.py         # Supervisor HTTP client
+│   │   │   ├── sync.py           # debounced mirror service
+│   │   │   └── reconcile.py      # startup + periodic reconciler
+│   │   └── static/               # built SPA is copied here at image build
+│   └── tests/
+├── frontend/
+│   ├── package.json
+│   ├── vite.config.ts
+│   ├── tsconfig.json
+│   ├── index.html
+│   ├── public/manifest.webmanifest
+│   └── src/
+│       ├── main.tsx
+│       ├── app/                  # routes, layout, providers
+│       ├── views/                # Today, Member, Parent
+│       ├── components/
+│       ├── hooks/
+│       ├── store/                # Zustand slices
+│       ├── api/                  # TanStack Query client + fetch wrapper
+│       ├── ws/                   # WebSocket client
+│       └── assets/               # chime.ogg, icons
+├── lovelace-card/
+│   ├── package.json
+│   ├── rollup.config.mjs
+│   └── src/
+│       ├── family-chores-card.ts
+│       └── family-chores-card-editor.ts
+├── scripts/
+│   ├── dev_backend.sh
+│   ├── dev_frontend.sh
+│   ├── dev_supervisor_stub.py    # fake Supervisor for local dev
+│   └── lint.sh
+└── .github/workflows/
+    ├── ci.yml                    # lint + tests on PR
+    └── release.yml               # multi-arch image build on tag
+```
+
+---
+
+## 2. Data flow (authoritative diagram)
+
+SQLite is the only source of truth. HA entities are a one-way mirror. Business logic **never reads state from HA** to make decisions.
+
+```
+  ┌─────────────────────────┐  Ingress HTTP + WS  ┌──────────────────────┐
+  │  Browser (SPA)          │◀────────────────────▶│ FastAPI (port 8099)  │
+  │  parents + kids         │                      │ ─ routers            │
+  └─────────────────────────┘                      │ ─ APScheduler        │
+                                                   │ ─ ha/sync.py (async) │
+                                                   │ ─ SQLite (SoT) ◀───── source of truth
+                                                   └───────────┬──────────┘
+                                                               │ REST, Bearer $SUPERVISOR_TOKEN
+                                                               │ http://supervisor/core/api/...
+                                                               ▼
+                                                   ┌──────────────────────┐
+                                                   │ HA Core (mirror)     │
+                                                   │  sensor.*_points     │
+                                                   │  sensor.*_streak     │
+                                                   │  sensor.pending_     │
+                                                   │    approvals         │
+                                                   │  todo.family_chores_ │
+                                                   │    <slug> (per mbr)  │
+                                                   │  + events fired      │
+                                                   └──────────┬───────────┘
+                                                              │ read-only subscribe
+                                                              ▼
+                                                   ┌──────────────────────┐
+                                                   │ Lovelace Lit card    │
+                                                   │ (secondary UI)       │
+                                                   └──────────────────────┘
+```
+
+**Rules:**
+1. Every write to SQLite that changes observable state enqueues a sync task. The enqueue call is non-blocking and the API response does not wait for HA.
+2. `ha/sync.py` debounces same-entity bursts (500 ms window) and coalesces them into a single state update. Prevents hammering HA during bulk operations.
+3. Retry policy: exponential backoff (0.5 s, 1 s, 2 s, 4 s, 8 s), max 5 attempts, per-entity queue cap of 1000 events. On overflow, drop oldest and log at warning level.
+4. Reconcile on startup + every 15 min: for each member, fetch their `todo.family_chores_<slug>` items, compare against active instances, create missing / update changed / remove orphans.
+5. If HA is unreachable, the UI keeps working. A banner flag ("HA bridge disconnected") is raised and cleared automatically on reconnection.
+
+---
+
+## 3. Technology choices
+
+### Backend
+| Concern | Choice | Why |
+|---|---|---|
+| Web framework | FastAPI + uvicorn (single worker) | Async, Pydantic v2 native, small footprint |
+| ORM | SQLAlchemy 2.x (async) | Stable, good Alembic integration |
+| Migrations | Alembic | Standard, script-based, easy rollback |
+| Scheduler | APScheduler (AsyncIOScheduler) | In-process; no broker; fine for single container |
+| HTTP client (HA) | httpx (async) | Same semantics as FastAPI, typed |
+| Auth hashing | argon2-cffi | Modern default, fine memory/cpu knobs |
+| JWT | PyJWT | Small, well-scoped, HS256 is sufficient |
+| Images | Pillow | Metadata strip + re-encode |
+| Logging | structlog → JSON | Structured, filterable, no secrets in fmt |
+| Typing | mypy --strict | Catches lots of HA-API drift early |
+| Lint | ruff | Fast, replaces flake8+isort+black-ish |
+
+### Frontend (SPA)
+| Concern | Choice | Why |
+|---|---|---|
+| Framework | React 18 + TypeScript | Most familiar, best tablet support |
+| Build | Vite | Fast, simple, output is static files |
+| Styling | Tailwind CSS | Utility-first, no component library needed |
+| State | Zustand | Minimal, no providers, good for kid-flow view |
+| Data | TanStack Query | Stale-while-revalidate, good offline UX |
+| Routing | React Router v6 | Standard, Ingress-compatible with relative base |
+| Animations | canvas-confetti + framer-motion (small) | Only where needed |
+| Sound | HTMLAudioElement + OGG chime | No library needed |
+
+### Lovelace card
+| Concern | Choice | Why |
+|---|---|---|
+| Framework | Lit 3 + TypeScript | HA card convention |
+| Bundling | Rollup | Smallest output, single file |
+| Data source | `hass` state subscription only | Never hits the add-on API — keeps it decoupled |
+
+---
+
+## 4. Key design decisions (the ones future-me will question)
+
+1. **Single container, no s6-overlay.** Uvicorn runs in the foreground under `run.sh`; APScheduler runs inside the FastAPI process. Simpler, fewer moving parts; downside is one process = one failure domain, which we accept.
+
+2. **SQLite with WAL mode.** `PRAGMA journal_mode=WAL`, `synchronous=NORMAL`, `foreign_keys=ON`. Single writer (this process) means no contention.
+
+3. **Alembic from day 1**, even for the initial schema. Backup `/data/family_chores.db` → `.bak` before any `alembic upgrade`. First migration writes the full v1 schema.
+
+4. **Instance generation strategy:** lazy-generate on read with a 14-day horizon, plus a midnight rollover job that pre-materializes tomorrow and marks yesterday's `pending`/`done_unapproved` as `missed`. Lazy + pre-materialization together avoid both cold-start gaps and unbounded future rows.
+
+5. **Midnight rollover is user-tz-aware.** Scheduler reschedules itself on DST boundaries. Uses `zoneinfo` (stdlib). Source of tz: `GET /api/config` on HA at startup, cached and re-fetched hourly. Override via add-on option `timezone_override` for edge cases.
+
+6. **Points awarded on `done` state transition, not on `done_unapproved`.** For members with `requires_approval=true`, zero points awarded until a parent calls `approve`. `activity_log` records both events.
+
+7. **Streaks: `done_unapproved` does NOT count.** Literal reading of the spec ("100% of that member's assigned instances ended in `done` (approved)"). This means slow parents can cost a kid their streak — we flag this friction point in the README and leave a hook to optionally "count provisionally" if feedback demands it.
+
+8. **Streak milestones fire on transition, not on every read.** We compare streak before/after the day's recomputation and fire HA events only on the exact day the threshold is crossed. No duplicate fires on restart.
+
+9. **Week-anchor reset.** Every rollover checks whether the member's stored `week_anchor` is in a prior week under the configured `week_starts_on`. If so, reset `points_this_week = 0` and update `week_anchor`. This is idempotent.
+
+10. **`member_stats` is a cache, always rebuildable.** A maintenance endpoint (`POST /api/admin/rebuild_stats`) recomputes from `chore_instance` rows. Useful after schema changes or if someone notices drift.
+
+11. **Auth model:**
+    - **Identity** comes from HA via Ingress headers (`X-Remote-User`, `X-Ingress-Path`). We trust them when a request arrives on the Ingress socket path.
+    - **Role elevation to "parent"** requires a PIN. Successful PIN → 5-minute HS256 JWT, scope `role=parent`. Every mutating admin endpoint checks the JWT.
+    - **Kid endpoints** (list today, complete, undo) accept Ingress auth alone.
+    - **JWT signing secret** is generated at first startup and stored in `app_config`. Rotated only on explicit user action.
+
+12. **Debounce/retry knobs are explicit:** 500 ms debounce, 5 retries with 2× backoff starting at 500 ms, 1000-event per-entity queue, drop-oldest on overflow.
+
+13. **WebSocket carries change notifications only, not snapshots.** Events are `{"type": "instance_updated", "id": 42}` and the client refetches via TanStack Query. Simpler serialisation, smaller payloads, harder to get out of sync.
+
+14. **Ingress-relative URLs everywhere.** The frontend fetches from `./api/...`, never absolute. Ingress path is variable per-install and per-user.
+
+15. **No service worker.** PWA manifest yes (for "add to home screen"), but SW + Ingress is a known trap and not worth the complexity.
+
+16. **Lovelace card never calls the add-on API.** Read-only via `hass` state. Tap → navigate to Ingress. This keeps the state model unambiguous (one mutating path only).
+
+17. **No `custom_components/` integration, no config flow.** Pure add-on.
+
+18. **Avatars:** accept PNG/JPEG/WebP up to 2 MB, re-encode via Pillow to strip EXIF and enforce max 512×512, store as `/data/avatars/<uuid>.<ext>`. Emoji avatars stored inline as string.
+
+19. **Week start default:** Monday. Configurable via add-on option.
+
+20. **Placeholder assets.** `icon.png`, `logo.png`, and the completion chime ship as placeholders. Listed in README "Assets to replace."
+
+---
+
+## 5. Deviations from prompt
+
+- **2026-04-21 — dropped `map: [- type: share]` from `config.yaml`.** The prompt's sample manifest declared `share` access "for avatar uploads exposed to HA if desired." Avatars are served by our own FastAPI under `/api/avatars/...`, so there's no user-facing reason to make them visible at `/share`. Dropping this shrinks the add-on's permission surface. If a real need appears (e.g. using an avatar in HA notification attachments), re-add.
+- **2026-04-21 — added `tini` as ENTRYPOINT.** The prompt said "no s6 needed for single process," which is true — tini isn't s6, it's a ~100KB init to reap zombies and forward signals so `docker stop` / add-on stop doesn't take 10 s to SIGKILL. Common pattern for single-process containers.
+- **2026-04-21 — added `startup: application` and `boot: auto` to `config.yaml`.** Not mentioned in the prompt but standard for HA add-ons that depend on HA Core being up. `application` defers start until HA Core is ready, matching our reconcile-on-startup behaviour.
+
+---
+
+## 6. Security posture (summary; README has the user-facing version)
+
+- Add-on sits inside HA's trust boundary. Anyone who can reach HA can reach this. Parent PIN is UX, not security.
+- Supervisor token lives in memory, never written to disk, never included in responses.
+- PIN is argon2-hashed with a per-install random salt.
+- Every endpoint is Pydantic-validated.
+- SQLAlchemy parameterized queries only.
+- `X-Remote-User` is trusted only when the request arrives via the Ingress path. Non-Ingress requests that assert the header are rejected.
+- Logs never contain PINs, JWTs, argon2 hashes, or the Supervisor token — enforce with a structlog processor that redacts by key name.
+
+---
+
+## 7. Future hook points (v2+)
+
+These are explicitly out of scope for v1, but we leave the architecture unbent so they don't require rewrites.
+
+- **Reward catalog.** Add `reward` + `reward_redemption` tables; `points_total` already tracks a spendable balance; a new router + parent view covers it. No bridge changes needed (or mirror redemptions as events).
+- **Per-kid PIN.** Add `member.pin_hash` column; reuse the parent JWT flow with a different scope (`role=kid:<id>`). The `display_mode` field already hints at per-member surface differences.
+- **Voice/TTS announcements.** Already fire HA events on completion/approval/milestone; user can wire those to `tts.*` services via standard automations. Hook point = event payload shape (keep it stable).
+- **Photo proof.** Extend `chore_instance` with `proof_image_path`; reuse the avatar upload path. Bridge publishes a `has_proof` attribute on the instance's todo item if we want it.
+- **Multi-household.** Non-trivial — would need a `household` scoping column on every table. Not architected for; would be a v2 major rewrite. Noted.
+
+---
+
+## 8. Open questions (resolve before milestone 4)
+
+1. **HA `todo` service semantics.** Need to confirm:
+   - Does `POST /api/services/todo/add_item` return the created item's UID? If not, how do we map our `chore_instance` rows to HA todo items?
+   - Is there a way to set a client-chosen UID, or are HA UIDs always server-assigned?
+   - What is the exact payload for `due` so the item surfaces on the calendar?
+   → Plan: write a small investigation script against a real HA first, document findings here.
+
+2. **`hassio_role: default` grant scope.** Is `default` enough for all REST calls we need (`/api/states`, `/api/services/*`, `/api/events/*`, `/api/config`)? If not, escalate to `homeassistant`. Document the minimum that works.
+
+3. **Ingress header reliability.** Confirm `X-Remote-User` and `X-Ingress-Path` are always set. If not always, figure out what to do when absent (reject? fall back to anonymous?).
+
+4. **Env vars at runtime.** Confirm `SUPERVISOR_TOKEN` is set, and whether there's a newer canonical name (some docs show `HASSIO_TOKEN` for older versions). Pick one, document the fallback.
+
+5. **Alembic location at runtime.** Ship migrations inside the image (read-only) and run them against `/data/family_chores.db`. Confirm this is the add-on convention; some add-ons copy migrations to `/data` at first boot.
+
+6. **DST + scheduler.** APScheduler's `cron` trigger with a tz argument should handle DST, but needs verification under spring-forward (missing hour) and fall-back (duplicated hour) with a midnight rollover. Write two explicit tests.
+
+7. **WebSocket through Ingress.** Confirm Supervisor's Ingress proxy upgrades WebSocket correctly with the default add-on config.
+
+8. **Add-on option `share` map usage.** The prompt mentions `map: [- type: share]` but `share` is only needed if we want avatars visible outside the add-on. If not required for v1, drop this to shrink the permission surface. → Default: drop it unless we find a user-facing reason to keep.
+
+---
+
+## 9. Milestones (from prompt §13)
+
+1. ☐ Add-on manifest + Dockerfile boots cleanly
+2. ☐ DB + models + Alembic
+3. ☐ Recurrence + instance generation + scheduler
+4. ☐ API + auth
+5. ☐ HA bridge
+6. ☐ SPA skeleton
+7. ☐ SPA polish + card
+8. ☐ Tests + CI
+
+Stop and summarize for the human after each.
+
+---
+
+## 10. Changelog
+
+- **2026-04-21** — Initial DECISIONS.md. File tree confirmed with one deviation (collapsed `family-chores/` wrapper since working dir is already `ToDoChore/`). All major tech choices recorded. Open questions queued against milestone 4. No code yet — next step is user sign-off on this plan, then milestone 1.
