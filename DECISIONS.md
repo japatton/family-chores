@@ -218,6 +218,22 @@ SQLite is the only source of truth. HA entities are a one-way mirror. Business l
 
 20. **Placeholder assets.** `icon.png`, `logo.png`, and the completion chime ship as placeholders. Listed in README "Assets to replace."
 
+21. **DB datetimes are naive UTC.** SQLite has no real timezone support and SQLAlchemy's `DateTime(timezone=True)` on SQLite just strips the tz anyway. Storing naive datetimes that represent UTC keeps the contract unambiguous. `family_chores.core.time.utcnow` is the only canonical way to mint a "now" value for the DB; `to_local(dt, tz)` is the only canonical way to convert back for "today"-style logic.
+
+22. **Enum columns stored as strings (`native_enum=False`).** Adding a new `InstanceState` or `RecurrenceType` becomes a pure code change — no ALTER TABLE, no data-migration for existing rows. The downside (losing SQL-side enum validation) is acceptable given we validate via Pydantic at the boundary anyway.
+
+23. **Python-side defaults for `created_at`/`updated_at` (not `server_default`).** Keeps the convention identical across dialects and makes unit-testable. `onupdate=utcnow` at the ORM layer triggers on any UPDATE through SQLAlchemy — good enough since we're the only writer.
+
+24. **PRAGMAs applied via `connect` event on `engine.sync_engine`.** `foreign_keys=ON`, `journal_mode=WAL`, `synchronous=NORMAL`. This is the SQLAlchemy-canonical way to ensure the PRAGMAs are set for every pooled connection, including the ones Alembic opens.
+
+25. **Alembic runs sync against the same SQLite file as the async runtime.** Simpler than the async-Alembic pattern; `env.py` creates its own sync engine and the PRAGMA event is reused. The runtime app never uses this sync path.
+
+26. **Alembic config is constructed programmatically at runtime** (migrations live inside the installed package). `backend/alembic.ini` exists for dev CLI use only and is not shipped in the Docker image runtime path.
+
+27. **`.bak` snapshots must checkpoint WAL first.** When WAL mode is active, most committed state lives in the `-wal` sidecar file until a checkpoint flushes it into the main DB. Copying only the main file yields a torn snapshot — we hit this during milestone 2 integration testing and the bug was silent: backups appeared to succeed but contained almost nothing. Fix is `PRAGMA wal_checkpoint(TRUNCATE)` before the copy. Sidecars are also scrubbed before a restore so a stale `-wal` can't overlay a freshly-restored main file.
+
+28. **Full DB corruption must include sidecars to be detectable.** Corollary of #27: corrupting just the main file doesn't actually corrupt the database from SQLite's view, because WAL still has the real pages. The recovery tests explicitly nuke `-wal`/`-shm` to model disk loss or filesystem damage, which is what the recovery path is actually designed for.
+
 ---
 
 ## 5. Deviations from prompt
@@ -278,8 +294,8 @@ These are explicitly out of scope for v1, but we leave the architecture unbent s
 
 ## 9. Milestones (from prompt §13)
 
-1. ☐ Add-on manifest + Dockerfile boots cleanly
-2. ☐ DB + models + Alembic
+1. ☑ Add-on manifest + Dockerfile boots cleanly — commit `d058db9`
+2. ☑ DB + models + Alembic — this milestone
 3. ☐ Recurrence + instance generation + scheduler
 4. ☐ API + auth
 5. ☐ HA bridge
@@ -294,3 +310,5 @@ Stop and summarize for the human after each.
 ## 10. Changelog
 
 - **2026-04-21** — Initial DECISIONS.md. File tree confirmed with one deviation (collapsed `family-chores/` wrapper since working dir is already `ToDoChore/`). All major tech choices recorded. Open questions queued against milestone 4. No code yet — next step is user sign-off on this plan, then milestone 1.
+- **2026-04-21** — Milestone 1 complete (`d058db9`). Three manifest deviations logged in §5.
+- **2026-04-21** — Milestone 2 complete. Added §4 entries #21–#28 covering DB conventions, PRAGMAs, Alembic integration, and the non-obvious WAL-backup pitfall we hit during integration testing. No new prompt deviations.
