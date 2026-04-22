@@ -234,6 +234,16 @@ SQLite is the only source of truth. HA entities are a one-way mirror. Business l
 
 28. **Full DB corruption must include sidecars to be detectable.** Corollary of #27: corrupting just the main file doesn't actually corrupt the database from SQLite's view, because WAL still has the real pages. The recovery tests explicitly nuke `-wal`/`-shm` to model disk loss or filesystem damage, which is what the recovery path is actually designed for.
 
+29. **Streaks are computed as of yesterday, not today.** At midnight rollover we pass `streak_as_of = today - 1` to `compute_streak`. Otherwise the moment we generate today's PENDING instances (which we do *in the same rollover*), today has non-DONE states and the streak walk returns 0 on every rollover. This matches the prompt's wording ("100% of that member's assigned instances **ended** in `done`") — today hasn't ended yet. Caught while writing `test_rollover_fires_each_milestone_exactly_once`.
+
+30. **Milestone events fire only on the exact transition**, not on re-crossings. `crossed_milestone(prev, new)` returns the threshold iff `prev < threshold <= new`. A streak that breaks and later re-crosses the same milestone does NOT refire — we treat that as acceptable friction for v1 to keep the event stream quiet and the bridge stateless. If families complain, we can add a "last-milestone-fired" column to `member_stats` and be smarter.
+
+31. **Catch-up rollover runs on every app boot**, using the same `run_rollover` pipeline as the midnight cron. Every step (`mark_overdue`, stats recomputation, `generate_instances`) is idempotent, so this is safe — and it guarantees the DB is consistent from the very first request even if the add-on was down when midnight fired yesterday.
+
+32. **APScheduler is optional at boot via env var.** `FAMILY_CHORES_SKIP_SCHEDULER=1` disables the scheduler startup in the lifespan. Used by `test_lifespan_integration.py` to avoid leaking APScheduler threads into pytest's event loop; the scheduler factory's behaviour is unit-tested separately.
+
+33. **Effective timezone falls back to UTC until HA tz fetching lands (milestone 5).** Added an `Options.timezone_override` that maps to a new `timezone: str?` option in `config.yaml`. If unset (or invalid IANA name), we use UTC. Not ideal — midnight rollover fires at UTC midnight instead of the user's local midnight — but the app is fully functional.
+
 ---
 
 ## 5. Deviations from prompt
@@ -241,6 +251,8 @@ SQLite is the only source of truth. HA entities are a one-way mirror. Business l
 - **2026-04-21 — dropped `map: [- type: share]` from `config.yaml`.** The prompt's sample manifest declared `share` access "for avatar uploads exposed to HA if desired." Avatars are served by our own FastAPI under `/api/avatars/...`, so there's no user-facing reason to make them visible at `/share`. Dropping this shrinks the add-on's permission surface. If a real need appears (e.g. using an avatar in HA notification attachments), re-add.
 - **2026-04-21 — added `tini` as ENTRYPOINT.** The prompt said "no s6 needed for single process," which is true — tini isn't s6, it's a ~100KB init to reap zombies and forward signals so `docker stop` / add-on stop doesn't take 10 s to SIGKILL. Common pattern for single-process containers.
 - **2026-04-21 — added `startup: application` and `boot: auto` to `config.yaml`.** Not mentioned in the prompt but standard for HA add-ons that depend on HA Core being up. `application` defers start until HA Core is ready, matching our reconcile-on-startup behaviour.
+- **2026-04-21 — added `services/` directory alongside `core/`.** The prompt's file tree lists `core/` for "pure domain logic" but routes DB-backed orchestration (mark overdue, generate instances, recompute stats) through the scheduler. Putting async-session-using code under `services/` keeps `core/` genuinely pure (no SQLAlchemy imports) and makes unit tests easy. Prompt tree was illustrative; no conflict with §10.
+- **2026-04-21 — added `timezone` option to `config.yaml`.** Not in the prompt's manifest snippet; needed so the scheduler has a sensible tz before milestone 5's HA tz fetching lands. Optional string (`str?`); empty = fall back to UTC.
 
 ---
 
@@ -295,8 +307,8 @@ These are explicitly out of scope for v1, but we leave the architecture unbent s
 ## 9. Milestones (from prompt §13)
 
 1. ☑ Add-on manifest + Dockerfile boots cleanly — commit `d058db9`
-2. ☑ DB + models + Alembic — this milestone
-3. ☐ Recurrence + instance generation + scheduler
+2. ☑ DB + models + Alembic — commit `9c2aea4`
+3. ☑ Recurrence + instance generation + scheduler — this milestone
 4. ☐ API + auth
 5. ☐ HA bridge
 6. ☐ SPA skeleton
@@ -312,3 +324,4 @@ Stop and summarize for the human after each.
 - **2026-04-21** — Initial DECISIONS.md. File tree confirmed with one deviation (collapsed `family-chores/` wrapper since working dir is already `ToDoChore/`). All major tech choices recorded. Open questions queued against milestone 4. No code yet — next step is user sign-off on this plan, then milestone 1.
 - **2026-04-21** — Milestone 1 complete (`d058db9`). Three manifest deviations logged in §5.
 - **2026-04-21** — Milestone 2 complete. Added §4 entries #21–#28 covering DB conventions, PRAGMAs, Alembic integration, and the non-obvious WAL-backup pitfall we hit during integration testing. No new prompt deviations.
+- **2026-04-21** — Milestone 3 complete. Added §4 entries #29–#33 (streak-as-of-yesterday, milestone transition semantics, catch-up rollover, scheduler skip flag, UTC fallback). Two new prompt-tree additions logged in §5 (`services/` dir, `timezone` option). Caught a real-world-feel bug while testing — today's PENDING instances breaking the streak on the same rollover that generated them — documented as #29.

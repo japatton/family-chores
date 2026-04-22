@@ -21,7 +21,9 @@ options:
   log_level: info
   week_starts_on: monday
   sound_default: false
+  timezone: ""
 schema:
   log_level: list(debug|info|warning|error)
   week_starts_on: list(monday|sunday)
   sound_default: bool
+  timezone: str?
