@@ -1,6 +1,7 @@
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { useInfo } from '../api/hooks'
 import { useWSConnected } from '../ws/provider'
+import { AnimatedTitle } from '../components/AnimatedTitle'
 import { Banner } from '../components/Banner'
 import { DecorativeBackground } from '../components/DecorativeBackground'
 import { SoundToggle } from '../components/SoundToggle'
@@ -27,11 +28,8 @@ export function AppShell() {
           backdropFilter: 'blur(12px)',
         }}
       >
-        <Link to="/" className="flex items-center gap-3 text-fluid-lg font-black text-brand-700">
-          <span aria-hidden className="text-fluid-xl animate-sparkle">🧹</span>
-          <span className="bg-gradient-to-r from-brand-700 via-bubblegum-500 to-candy-500 bg-clip-text text-transparent">
-            Family Chores
-          </span>
+        <Link to="/" className="block py-2">
+          <AnimatedTitle text="Family Chores" />
         </Link>
         <nav className="flex items-center gap-3">
           {!connected && (
