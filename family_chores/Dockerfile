@@ -1,3 +1,9 @@
+# Global ARG — must precede the first FROM to be visible to every stage's
+# FROM line. Default points at the amd64 base-python image so a plain
+# `docker build .` still works; HA Supervisor overrides this per arch via
+# --build-arg from build.yaml.
+ARG BUILD_FROM="ghcr.io/home-assistant/amd64-base-python:3.12-alpine3.20"
+
 # ─── Stage 1: frontend build ──────────────────────────────────────────────
 # Compiles the React/Vite SPA into backend/src/family_chores/static/.
 # Runs on Node 22 LTS; the output is pure static HTML/JS/CSS so the final
@@ -19,7 +25,6 @@ RUN mkdir -p /app/backend/src/family_chores \
     && npm run build
 
 # ─── Stage 2: backend runtime ─────────────────────────────────────────────
-ARG BUILD_FROM
 FROM ${BUILD_FROM}
 
 ENV PYTHONUNBUFFERED=1 \
@@ -42,7 +47,7 @@ RUN apk add --no-cache --virtual .build-deps \
 
 WORKDIR /app
 
-# Backend source first (including an empty `static/` + `.gitkeep`).
+# Backend source first.
 COPY backend/pyproject.toml /app/backend/pyproject.toml
 COPY backend/src /app/backend/src
 
