@@ -1,6 +1,6 @@
-/* Nunito via Google Fonts CDN — graceful fallback to system stack when
- * the add-on is offline. @import must come before other statements. */
-@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;900&display=swap');
+/* Fredoka (display) + Nunito (body). Graceful fallback to the system
+ * sans stack when the add-on is offline. */
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;900&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -28,11 +28,14 @@ body {
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: contain;
 
-  /* Slow background-position shift reduces static-pixel burn-in on OLED
-   * wall-mounted displays. 90-second cycle — unnoticeable while looking,
-   * does the job in peripheral vision. */
-  background: linear-gradient(135deg, #faf8ff 0%, #eef2ff 50%, #faf8ff 100%);
-  background-size: 300% 300%;
+  /* 5-stop pastel wash (indigo / cream / lavender / pink / sky) that
+   * slowly shifts on a 90-second cycle. Saturated enough to read as
+   * "kid-friendly" at a glance; slow enough to double as burn-in
+   * protection on the 32" wall display. Silent under
+   * prefers-reduced-motion (see media query below). */
+  background:
+    linear-gradient(135deg, #e0e7ff 0%, #fde68a 22%, #ddd6fe 45%, #fbcfe8 70%, #bae6fd 100%);
+  background-size: 320% 320%;
   animation: fc-bg-shift 90s ease-in-out infinite;
 }
 
@@ -46,9 +49,23 @@ body {
   }
 }
 
+h1,
+h2,
+h3,
+.font-display {
+  font-family: 'Fredoka', 'Nunito', system-ui, sans-serif;
+  letter-spacing: -0.01em;
+}
+
 @media (prefers-reduced-motion: reduce) {
   body {
     animation: none;
+  }
+  .animate-wiggle,
+  .animate-sparkle,
+  .animate-float-up,
+  .animate-pop-in {
+    animation: none !important;
   }
 }
 
@@ -61,11 +78,12 @@ button,
   -webkit-user-select: none;
 }
 
-/* Utility class for member-themed surfaces.
+/* Member-themed surfaces.
  *   <div className="themed" style={{ '--accent': m.color }}>
- * Keeps theming wire-in compact without wiring a CSS-in-JS lib. */
+ * Drives the MemberTile gradient + the ChoreCard accent border. */
 .themed {
-  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 80%, black));
+  background:
+    linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, black));
   color: white;
 }
 
@@ -73,4 +91,23 @@ button,
   background: color-mix(in srgb, var(--accent) 12%, white);
   color: var(--accent-ink);
   border: 1px solid color-mix(in srgb, var(--accent) 30%, white);
+}
+
+/* Decorative dotted overlay — layered on top of themed tiles for a
+ * subtle pattern that reads as "playful" without fighting the name
+ * and stats below. */
+.dot-pattern {
+  background-image:
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.22) 1.5px, transparent 2px);
+  background-size: 18px 18px;
+}
+
+/* Active-press "squish" — used on tiles and chore cards to feel tactile
+ * on a touchscreen. Pairs with the offset shadow so tapping nudges the
+ * surface down into the shadow. */
+.press {
+  transition: transform 140ms cubic-bezier(.2, .8, .2, 1);
+}
+.press:active {
+  transform: translateY(2px) scale(0.985);
 }
