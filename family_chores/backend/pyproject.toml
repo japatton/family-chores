@@ -11,7 +11,14 @@ authors = [{ name = "Jason Patton" }]
 license = { text = "MIT" }
 dependencies = [
     "fastapi>=0.115,<0.116",
-    "uvicorn[standard]>=0.30,<0.31",
+    # Plain `uvicorn` + the two optional deps we actually use at runtime.
+    # Avoids `uvicorn[standard]`, which pulls `watchfiles` (Rust-based);
+    # armv7 Alpine builds fail because rustup has no prebuilt target for
+    # `arm-unknown-linux-musleabihf`. `watchfiles` is only needed for
+    # `--reload`, which production doesn't use.
+    "uvicorn>=0.30,<0.31",
+    "websockets>=12",
+    "httptools>=0.6",
     "sqlalchemy[asyncio]>=2.0.30,<2.1",
     "aiosqlite>=0.20,<0.21",
     "alembic>=1.13,<1.14",
