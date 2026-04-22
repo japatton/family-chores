@@ -244,6 +244,16 @@ SQLite is the only source of truth. HA entities are a one-way mirror. Business l
 
 33. **Effective timezone falls back to UTC until HA tz fetching lands (milestone 5).** Added an `Options.timezone_override` that maps to a new `timezone: str?` option in `config.yaml`. If unset (or invalid IANA name), we use UTC. Not ideal — midnight rollover fires at UTC midnight instead of the user's local midnight — but the app is fully functional.
 
+34. **Parent JWT: 5-min absolute TTL + `/api/auth/refresh` endpoint.** The prompt asks for "5 minutes of inactivity" — we model that by issuing short absolute JWTs and letting the frontend call `/refresh` on user activity. Pure absolute-TTL would cut active sessions mid-action; pure inactivity would require either server-side session state or per-request JWT rotation. The refresh approach is stateless on the server and trivial on the frontend.
+
+35. **Global error envelope with `X-Request-ID`.** Every HTTP response (including validation and 500 errors) carries a correlation ID in a header and in the body. Supplied IDs are honoured (`X-Request-ID: abc` round-trips), else we mint a 12-hex-char token. `DomainError` subclasses map cleanly to HTTP codes; Pydantic `RequestValidationError` output is passed through `jsonable_encoder` to strip the `ValueError` objects Pydantic v2 stashes in `ctx`.
+
+36. **WebSocket protocol: change-notification only.** Events are `{"type": "instance_updated", "instance_id": 42, "member_id": 3, "state": "done"}` and the client is expected to refetch the affected resource. Two reasons: (a) halves the coupling between UI and DTO shapes (DTOs can evolve without breaking WS consumers), (b) dead-simple multi-client broadcast — every connected socket sees the same payload.
+
+37. **Chore create/update triggers `generate_instances` inline.** Otherwise creating a chore at 3 pm means nothing shows up for today until the midnight rollover. `generate_instances` is already idempotent and cheap at family scale (≤100 new rows), so calling it on every chore mutation is essentially free.
+
+38. **`MemberStats` fields must be explicitly initialised on construction.** `mapped_column(default=0)` only fires at INSERT time, not attribute access, so `stats.points_total + delta` on a fresh transient row raised `TypeError: NoneType + int`. `adjust_member_points` now builds stats rows with explicit zeros; the `recompute_stats_for_member` path happens to write every field from queries so it didn't hit this. Caught while writing milestone-4 service tests.
+
 ---
 
 ## 5. Deviations from prompt
@@ -308,8 +318,8 @@ These are explicitly out of scope for v1, but we leave the architecture unbent s
 
 1. ☑ Add-on manifest + Dockerfile boots cleanly — commit `d058db9`
 2. ☑ DB + models + Alembic — commit `9c2aea4`
-3. ☑ Recurrence + instance generation + scheduler — this milestone
-4. ☐ API + auth
+3. ☑ Recurrence + instance generation + scheduler — commit `5d124dc`
+4. ☑ API + auth — this milestone
 5. ☐ HA bridge
 6. ☐ SPA skeleton
 7. ☐ SPA polish + card
@@ -325,3 +335,4 @@ Stop and summarize for the human after each.
 - **2026-04-21** — Milestone 1 complete (`d058db9`). Three manifest deviations logged in §5.
 - **2026-04-21** — Milestone 2 complete. Added §4 entries #21–#28 covering DB conventions, PRAGMAs, Alembic integration, and the non-obvious WAL-backup pitfall we hit during integration testing. No new prompt deviations.
 - **2026-04-21** — Milestone 3 complete. Added §4 entries #29–#33 (streak-as-of-yesterday, milestone transition semantics, catch-up rollover, scheduler skip flag, UTC fallback). Two new prompt-tree additions logged in §5 (`services/` dir, `timezone` option). Caught a real-world-feel bug while testing — today's PENDING instances breaking the streak on the same rollover that generated them — documented as #29.
+- **2026-04-21** — Milestone 4 complete. Added §4 entries #34–#38 (parent JWT + refresh, error envelope with request IDs, WS notification-only protocol, inline instance generation on chore mutations, explicit MemberStats initialization). No new prompt deviations. 188 tests total (93 new): full HTTP coverage of every router, auth flow edge cases, WS hello/ping-pong/broadcast, global error shape, and service-level tests for undo-window expiry that need injected time.

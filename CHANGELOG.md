@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Milestone 4 — HTTP API + auth.** Six routers (`auth`, `members`,
+  `chores`, `instances`, `admin`, `ws`) wired under `/api/...`. Argon2
+  PIN hashing + HS256 parent JWTs (5-min TTL) with a `/api/auth/refresh`
+  endpoint for sliding-window parity with the prompt's 5-min-inactivity
+  spec. `MemberStats.adjust` for manual point corrections with 0-clamp.
+  Per-instance state transitions (`complete` / `undo` / `approve` /
+  `reject` / `skip`) with a 4-second server-side undo window, activity
+  log entries for every mutation, and idempotent `generate_instances`
+  calls after chore create/update so a newly-added chore surfaces in
+  today's view immediately without waiting for midnight rollover.
+  WebSocket `/api/ws` broadcasts `{type, *_id, state}` deltas on every
+  mutation; clients refetch the affected resource. Global error envelope
+  `{error, detail, request_id}` + `X-Request-ID` header on every
+  response, wrapping `DomainError` subclasses, Pydantic validation, and
+  500s uniformly. 93 new tests (188 total) cover every router's happy
+  + auth-failure paths, WS hello/ping-pong/broadcast, service-level
+  undo-window expiry, and the error envelope shape.
 - **Milestone 3 — recurrence, instances, scheduler.** Pure `core/`
   modules for recurrence (all 7 rule types with DST-safe date-only math,
   month-end clamping, every-N-days anchor-aware modulo), streaks (with a

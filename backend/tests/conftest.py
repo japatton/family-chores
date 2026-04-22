@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -19,6 +20,8 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
+from family_chores.app import create_app  # noqa: E402
+from family_chores.config import Options  # noqa: E402
 from family_chores.db.base import Base, _install_sqlite_pragmas  # noqa: E402
 
 
@@ -47,3 +50,39 @@ async def async_session(
 ) -> AsyncIterator[AsyncSession]:
     async with async_session_factory() as session:
         yield session
+
+
+# ─── API fixtures ─────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def api_options(tmp_path) -> Options:
+    return Options(
+        log_level="debug",
+        week_starts_on="monday",
+        sound_default=False,
+        timezone_override="UTC",
+        data_dir=tmp_path,
+    )
+
+
+@pytest.fixture
+def client(api_options, monkeypatch) -> Iterator[TestClient]:
+    """A TestClient with the full lifespan run — DB bootstrapped, WSManager
+    up, JWT secret ensured, catch-up rollover executed. Scheduler is
+    skipped so pytest's loop doesn't inherit background threads."""
+    monkeypatch.setenv("FAMILY_CHORES_SKIP_SCHEDULER", "1")
+    app = create_app(options=api_options)
+    with TestClient(app) as c:
+        yield c
+
+
+@pytest.fixture
+def parent_headers(client) -> dict[str, str]:
+    """Returns Authorization header with a valid parent JWT, after setting
+    the parent PIN to '1234'."""
+    r = client.post("/api/auth/pin/set", json={"pin": "1234"})
+    assert r.status_code == 200, r.text
+    r = client.post("/api/auth/pin/verify", json={"pin": "1234"})
+    assert r.status_code == 200, r.text
+    return {"Authorization": f"Bearer {r.json()['token']}"}
