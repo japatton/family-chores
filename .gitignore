@@ -32,3 +32,5 @@ node_modules/
 /data/
 /tmp/
 local-data/
+*.tsbuildinfo
+family_chores/frontend/vite.config.js

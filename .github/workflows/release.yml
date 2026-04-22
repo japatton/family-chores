@@ -51,8 +51,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: Dockerfile
+          context: ./family_chores
+          file: ./family_chores/Dockerfile
           platforms: ${{ matrix.platform }}
           push: true
           tags: |
@@ -64,9 +64,6 @@ jobs:
   build-card:
     name: Build Lovelace card
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: lovelace-card
     steps:
       - uses: actions/checkout@v4
 
@@ -77,9 +74,11 @@ jobs:
           cache-dependency-path: lovelace-card/package-lock.json
 
       - name: Install deps
+        working-directory: lovelace-card
         run: npm ci
 
       - name: Build
+        working-directory: lovelace-card
         run: npm run build
 
       - name: Upload artefact for release job
