@@ -146,3 +146,41 @@ button,
 .press:active {
   transform: translateY(2px) scale(0.985);
 }
+
+/* 3D block-letter title — stacked text-shadow fakes extrusion; each
+ * letter colours itself via `--letter` and darkens the shadow via
+ * `--letter-shadow`. The wave keyframe bobs each letter; the parent
+ * staggers `animation-delay` per letter so the wave ripples through
+ * the word. */
+.fc-block-letter {
+  color: var(--letter);
+  text-shadow:
+    0 1px 0 var(--letter-shadow),
+    0 2px 0 var(--letter-shadow),
+    0 3px 0 var(--letter-shadow),
+    0 4px 0 var(--letter-shadow),
+    0 5px 0 var(--letter-shadow),
+    0 6px 10px rgba(0, 0, 0, 0.22);
+  animation: fc-letter-wave 2.4s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes fc-letter-wave {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  40% {
+    transform: translateY(-10px) rotate(-4deg);
+  }
+  60% {
+    transform: translateY(-10px) rotate(4deg);
+  }
+}
+
+/* Additional reduced-motion silencing for the new layers. */
+@media (prefers-reduced-motion: reduce) {
+  .fc-block-letter {
+    animation: none !important;
+  }
+}
