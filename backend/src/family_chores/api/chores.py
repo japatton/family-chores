@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from family_chores.api.deps import (
+    get_bridge,
+    get_effective_timezone,
     get_options,
     get_remote_user,
     get_session,
@@ -30,6 +32,7 @@ from family_chores.api.schemas import (
 from family_chores.config import Options
 from family_chores.core.time import local_today
 from family_chores.db.models import ActivityLog, Chore, Member
+from family_chores.ha.bridge import BridgeProtocol
 from family_chores.services.instance_service import generate_instances
 
 router = APIRouter(prefix="/api/chores", tags=["chores"])
@@ -102,7 +105,9 @@ async def create_chore(
     session: AsyncSession = Depends(get_session),
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
+    bridge: BridgeProtocol = Depends(get_bridge),
     opts: Options = Depends(get_options),
+    tz: str = Depends(get_effective_timezone),
     _parent=Depends(require_parent),
 ) -> ChoreRead:
     members = await _resolve_members(session, body.assigned_member_ids)
@@ -130,8 +135,10 @@ async def create_chore(
     )
     # So today's instance exists the moment the chore is created — users
     # shouldn't have to wait for midnight rollover to see their new chore.
-    await generate_instances(session, today=local_today(opts.effective_timezone))
+    await generate_instances(session, today=local_today(tz))
     await session.commit()
+    for m in members:
+        bridge.notify_member_dirty(m.id)
     await ws.broadcast({"type": EVT_CHORE_CREATED, "chore_id": chore.id})
     chore = await _load_with_members(session, chore.id)
     return _to_read(chore)
@@ -144,7 +151,9 @@ async def update_chore(
     session: AsyncSession = Depends(get_session),
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
+    bridge: BridgeProtocol = Depends(get_bridge),
     opts: Options = Depends(get_options),
+    tz: str = Depends(get_effective_timezone),
     _parent=Depends(require_parent),
 ) -> ChoreRead:
     chore = await _load_with_members(session, chore_id)
@@ -183,9 +192,11 @@ async def update_chore(
         )
     # Regenerate so new assignments / newly-active chores get today-onwards
     # instances without waiting for the midnight rollover.
-    await generate_instances(session, today=local_today(opts.effective_timezone))
+    await generate_instances(session, today=local_today(tz))
     await session.commit()
     chore = await _load_with_members(session, chore.id)
+    for m in chore.assigned_members:
+        bridge.notify_member_dirty(m.id)
     await ws.broadcast({"type": EVT_CHORE_UPDATED, "chore_id": chore.id})
     return _to_read(chore)
 
@@ -196,9 +207,11 @@ async def delete_chore(
     session: AsyncSession = Depends(get_session),
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
+    bridge: BridgeProtocol = Depends(get_bridge),
     _parent=Depends(require_parent),
 ) -> None:
     chore = await _load_with_members(session, chore_id)
+    affected_member_ids = [m.id for m in chore.assigned_members]
     session.add(
         ActivityLog(
             actor=user,
@@ -208,4 +221,9 @@ async def delete_chore(
     )
     await session.delete(chore)
     await session.commit()
+    for mid in affected_member_ids:
+        bridge.notify_member_dirty(mid)
+    # Orphan todo items are cleaned up by the 15-min reconciler; the
+    # DB cascade already removed chore_instances so we can't call
+    # bridge.notify_instance_changed on specific rows.
     await ws.broadcast({"type": EVT_CHORE_DELETED, "chore_id": chore_id})

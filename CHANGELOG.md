@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Milestone 5 — Home Assistant bridge.** Full one-way mirror of SQLite
+  state into HA entities. `family_chores.ha.client` is an async httpx
+  wrapper that auto-picks `SUPERVISOR_TOKEN` (add-on runtime) or
+  `HA_URL`+`HA_TOKEN` (local dev); its `HAClientError` hierarchy lets the
+  bridge distinguish transient from fatal failures. `family_chores.ha.bridge`
+  is an async worker task that debounces bursts (500 ms) and batches three
+  notification channels — dirty member sensors, global pending-approvals
+  count, and per-instance todo sync — into one HA round-trip per tick.
+  Event firing uses a backlog (cap 1000, drop-oldest) with
+  `HAUnavailableError` re-queueing for transient blips.
+  `family_chores.ha.reconcile` diffs HA todo items against open chore
+  instances and creates / updates / deletes to converge, using a
+  `[FC#<id>] <chore>` summary prefix to identify items we manage.
+  Per-member todo sync is opt-in via a new
+  `member.ha_todo_entity_id` column (nullable; requires a user-provisioned
+  Local To-do entity — see `INSTALL.md`). Lifespan fetches HA's timezone
+  at startup, runs one synchronous reconcile pass, and wires the 15-min
+  scheduled reconciler + streak-milestone event firing into the existing
+  midnight-rollover job. 30 new tests (218 total) covering the HTTP
+  layer (`httpx.MockTransport`), bridge behaviour against a `FakeHAClient`,
+  reconciler convergence, and a full end-to-end lifespan test where a
+  completion drives the expected set of HA calls.
 - **Milestone 4 — HTTP API + auth.** Six routers (`auth`, `members`,
   `chores`, `instances`, `admin`, `ws`) wired under `/api/...`. Argon2
   PIN hashing + HS256 parent JWTs (5-min TTL) with a `/api/auth/refresh`

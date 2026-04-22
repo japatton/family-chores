@@ -90,6 +90,10 @@ class Member(Base):
         _display_mode_col(), nullable=False, default=DisplayMode.KID_STANDARD
     )
     requires_approval: Mapped[bool] = mapped_column(nullable=False, default=False)
+    # Entity_id of a Local To-do list in HA, e.g. "todo.alice_chores". If
+    # unset the bridge skips todo sync for this member but still publishes
+    # sensors and events. See INSTALL.md "HA Todo Setup".
+    ha_todo_entity_id: Mapped[str | None] = mapped_column(String(128))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utcnow, onupdate=utcnow

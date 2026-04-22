@@ -38,6 +38,9 @@ from family_chores.config import Options, load_options
 from family_chores.core.time import local_today
 from family_chores.db.base import make_async_engine, make_session_factory
 from family_chores.db.startup import BootstrapResult, bootstrap_db
+from family_chores.ha import HABridge, NoOpBridge, make_client_from_env
+from family_chores.ha.client import HAClientError
+from family_chores.ha.reconcile import reconcile_once
 from family_chores.scheduler import make_scheduler
 from family_chores.security import ensure_jwt_secret
 from family_chores.services.rollover_service import run_rollover
@@ -47,6 +50,25 @@ log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 _SKIP_SCHEDULER_ENV = "FAMILY_CHORES_SKIP_SCHEDULER"
+
+
+async def _resolve_effective_timezone(
+    opts: Options, client: object | None
+) -> str:
+    """Prefer explicit override; else try HA's `/api/config → time_zone`; else UTC."""
+    if opts.timezone_override:
+        return opts.timezone_override
+    if client is not None:
+        try:
+            cfg = await client.get_config()
+            tz = cfg.get("time_zone")
+            if isinstance(tz, str) and tz:
+                return tz
+        except HAClientError as exc:
+            log.info("HA /config fetch failed (%s); defaulting to UTC", exc)
+        except Exception:
+            log.exception("unexpected error fetching HA /config; defaulting to UTC")
+    return "UTC"
 
 
 @asynccontextmanager
@@ -61,7 +83,17 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     async with app.state.session_factory() as session:
         app.state.jwt_secret = await ensure_jwt_secret(session)
 
-    tz = opts.effective_timezone
+    ha_client = make_client_from_env()
+    app.state.ha_client = ha_client
+    tz = await _resolve_effective_timezone(opts, ha_client)
+    app.state.effective_timezone = tz
+
+    if ha_client is None:
+        app.state.bridge = NoOpBridge()
+    else:
+        app.state.bridge = HABridge(ha_client, app.state.session_factory)
+    await app.state.bridge.start()
+
     try:
         async with app.state.session_factory() as session:
             summary = await run_rollover(
@@ -78,10 +110,33 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception:
         log.exception("startup catch-up rollover failed; continuing")
 
+    # Startup reconcile — converges HA todo state with SQLite after any
+    # downtime. Best-effort: a network blip doesn't block the app from
+    # coming up; the 15-min periodic reconciler will retry.
+    if ha_client is not None:
+        try:
+            rec = await reconcile_once(
+                ha_client, app.state.session_factory, today=local_today(tz)
+            )
+            log.info(
+                "startup reconcile: members=%d created=%d updated=%d deleted=%d errors=%d",
+                rec.members_processed,
+                rec.items_created,
+                rec.items_updated,
+                rec.items_deleted,
+                len(rec.errors),
+            )
+        except Exception:
+            log.exception("startup reconcile failed; continuing")
+
     app.state.scheduler = None
     if os.environ.get(_SKIP_SCHEDULER_ENV) != "1":
         scheduler = make_scheduler(
-            app.state.session_factory, tz=tz, week_starts_on=opts.week_starts_on
+            app.state.session_factory,
+            tz=tz,
+            week_starts_on=opts.week_starts_on,
+            bridge=app.state.bridge,
+            ha_client=ha_client,
         )
         scheduler.start()
         app.state.scheduler = scheduler
@@ -91,6 +146,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         if app.state.scheduler is not None:
             app.state.scheduler.shutdown(wait=False)
+        await app.state.bridge.stop()
         await app.state.engine.dispose()
 
 
@@ -204,7 +260,8 @@ def create_app(options: Options | None = None) -> FastAPI:
             "log_level": opts.log_level,
             "week_starts_on": opts.week_starts_on,
             "sound_default": opts.sound_default,
-            "timezone": opts.effective_timezone,
+            "timezone": getattr(app.state, "effective_timezone", opts.effective_timezone),
+            "ha_connected": getattr(app.state, "ha_client", None) is not None,
             "bootstrap": _bootstrap_payload(app),
         }
 

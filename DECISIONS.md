@@ -254,6 +254,22 @@ SQLite is the only source of truth. HA entities are a one-way mirror. Business l
 
 38. **`MemberStats` fields must be explicitly initialised on construction.** `mapped_column(default=0)` only fires at INSERT time, not attribute access, so `stats.points_total + delta` on a fresh transient row raised `TypeError: NoneType + int`. `adjust_member_points` now builds stats rows with explicit zeros; the `recompute_stats_for_member` path happens to write every field from queries so it didn't hit this. Caught while writing milestone-4 service tests.
 
+39. **HA bridge is a single async worker task with a wake event.** Routers/services call `bridge.notify_*`; those push onto in-memory sets / lists and set `_wake`. The worker sleeps on `_wake.wait()`, then sleeps an additional `debounce_seconds` before flushing, so a burst of notifications (e.g. one API request that mutates three things) coalesces into a single HA pass. One `_flush_lock` guarantees `force_flush` (used by tests and the reconciler) can't race with the timer. On any `HAUnavailableError` or unexpected exception the worker sleeps with exponential backoff (0.5 s → 60 s cap) and re-arms itself — a dropped event is re-queued before the re-raise.
+
+40. **Bridge client is constructed from the environment, not injected into routers.** `make_client_from_env()` picks `SUPERVISOR_TOKEN` (add-on path) over `HA_URL`+`HA_TOKEN` (local dev). If neither is set, the lifespan installs a `NoOpBridge` so the app still runs fully — the UI never sees "HA is down" beyond the `ha_connected: false` flag in `/api/info`.
+
+41. **Events fire AFTER state-change DB commit, from the bridge worker.** Routers enqueue the event payload during their synchronous mutation path; the worker fires them asynchronously. This keeps the HTTP response fast (we don't wait for HA) and ensures no event references a transaction that later rolled back.
+
+42. **Todo item identity uses a stable summary prefix: `[FC#<instance_id>] <chore_name>`.** HA doesn't return UIDs from `todo.add_item`, so after every add we call `todo.get_items` once, find the freshly-added item by our FC tag, and write its UID back to `chore_instance.ha_todo_uid`. The tag also lets the reconciler distinguish "our" items from anything the user put on the list manually — those are left alone.
+
+43. **Inline stats recompute in instance routers.** Every state transition (`complete`, `undo`, `approve`, `reject`, `skip`) calls `recompute_stats_for_member` before commit so the HTTP response's `/today` view shows the new totals. The alternative — letting the bridge recompute asynchronously — would leave the UI showing stale points for a beat after a tap, which feels broken on a kid tablet.
+
+44. **Timezone resolution order: `timezone` option → cached HA `/api/config → time_zone` → UTC.** Lifespan tries an HA config fetch at startup (short timeout; best-effort) and caches the result on `app.state.effective_timezone`. Routers read via the `get_effective_timezone` dependency. Scheduler jobs were built with this tz in milestone 3 — from milestone 5 onward, the tz is typically the real local tz, and midnight rollover fires at local midnight as intended.
+
+45. **Add-ons cannot create `todo.*` entities.** The prompt called for `todo.family_chores_<slug>` per member but add-ons aren't HA integrations and cannot register the `todo` platform. Users create one **Local To-do** per family member via HA's UI and paste the entity ID into the member record. `member.ha_todo_entity_id` is nullable: unset means "no todo sync for this member; sensors + events still publish." INSTALL.md §"HA To-do Setup" documents this.
+
+46. **Startup reconcile blocks briefly; periodic reconcile catches anything the bridge dropped.** Lifespan awaits `reconcile_once` before accepting requests so a restart after HA downtime converges state before the first API call. The 15-min scheduled job is the safety net for mid-run bridge failures.
+
 ---
 
 ## 5. Deviations from prompt
@@ -263,6 +279,7 @@ SQLite is the only source of truth. HA entities are a one-way mirror. Business l
 - **2026-04-21 — added `startup: application` and `boot: auto` to `config.yaml`.** Not mentioned in the prompt but standard for HA add-ons that depend on HA Core being up. `application` defers start until HA Core is ready, matching our reconcile-on-startup behaviour.
 - **2026-04-21 — added `services/` directory alongside `core/`.** The prompt's file tree lists `core/` for "pure domain logic" but routes DB-backed orchestration (mark overdue, generate instances, recompute stats) through the scheduler. Putting async-session-using code under `services/` keeps `core/` genuinely pure (no SQLAlchemy imports) and makes unit tests easy. Prompt tree was illustrative; no conflict with §10.
 - **2026-04-21 — added `timezone` option to `config.yaml`.** Not in the prompt's manifest snippet; needed so the scheduler has a sensible tz before milestone 5's HA tz fetching lands. Optional string (`str?`); empty = fall back to UTC.
+- **2026-04-21 — replaced `todo.family_chores_<slug>` with user-managed Local To-do entities.** Rooted in the add-on-vs-integration constraint (see §4 #45). User-facing impact documented in INSTALL.md. Changes `member.ha_todo_entity_id` nullable string to the schema.
 
 ---
 
@@ -290,27 +307,67 @@ These are explicitly out of scope for v1, but we leave the architecture unbent s
 
 ---
 
-## 8. Open questions (resolve before milestone 4)
+## 8. Open questions (original list + resolution status)
 
-1. **HA `todo` service semantics.** Need to confirm:
-   - Does `POST /api/services/todo/add_item` return the created item's UID? If not, how do we map our `chore_instance` rows to HA todo items?
-   - Is there a way to set a client-chosen UID, or are HA UIDs always server-assigned?
-   - What is the exact payload for `due` so the item surfaces on the calendar?
-   → Plan: write a small investigation script against a real HA first, document findings here.
+### Resolved by live probe against HA 2026.4.1 (2026-04-21)
 
-2. **`hassio_role: default` grant scope.** Is `default` enough for all REST calls we need (`/api/states`, `/api/services/*`, `/api/events/*`, `/api/config`)? If not, escalate to `homeassistant`. Document the minimum that works.
+1. **HA `todo` service semantics — RESOLVED.**
+   - `todo.add_item` does **NOT** support `return_response=true` (returns 400
+     "Service does not support responses"). No way to learn the created
+     item's UID from the call itself.
+   - `todo.get_items` *requires* `return_response=true` and returns each item
+     with a server-assigned `uid`, `summary`, `status`, `due`, `description`.
+     **This is the canonical read path.**
+   - `todo.update_item` / `todo.remove_item` accept either the UID or the
+     summary as the `item` field (UID wins on conflict).
+   - **Items are NOT in the entity state's `attributes` in 2026.4.** The
+     state is just the open-count; `items` is only surfaced through
+     `todo.get_items` service calls. This is a behaviour change from
+     earlier HA versions — we cannot use a single `GET /api/states/<entity>`
+     call to learn items.
+   - `due_date` works only on entities that expose `SET_DUE_DATE_ON_ITEM`
+     (feature bit 16). `todo.shopping_list` does **not** support it and 500's
+     if you pass `due_date`. **Local To-do** entities do support it.
+   - Custom events: `POST /api/events/family_chores_probe` returned 200 with
+     `{"message": "Event family_chores_probe fired."}`.
+   - HA exposes its configured timezone at `GET /api/config → time_zone`
+     (e.g. `"America/Chicago"`).
 
-3. **Ingress header reliability.** Confirm `X-Remote-User` and `X-Ingress-Path` are always set. If not always, figure out what to do when absent (reject? fall back to anonymous?).
+2. **`hassio_role: default` grant scope — NOT VERIFIED yet.** The probe
+   used an LLAT, not an add-on context. `default` is documented as giving
+   access to `/api/states`, `/api/services`, `/api/events`, `/api/config` —
+   keep as-is and re-check once the add-on is actually installed in HA OS.
 
-4. **Env vars at runtime.** Confirm `SUPERVISOR_TOKEN` is set, and whether there's a newer canonical name (some docs show `HASSIO_TOKEN` for older versions). Pick one, document the fallback.
+3. **Ingress header reliability — NOT VERIFIABLE outside of an installed
+   add-on.** Keep the `"anonymous"` fallback in `deps.get_remote_user`. If
+   real installs show the header missing intermittently, we'll add a
+   stricter path later.
 
-5. **Alembic location at runtime.** Ship migrations inside the image (read-only) and run them against `/data/family_chores.db`. Confirm this is the add-on convention; some add-ons copy migrations to `/data` at first boot.
+4. **Env vars — SETTLED.** Current HA OS exposes `SUPERVISOR_TOKEN`. The
+   older `HASSIO_TOKEN` is gone in supported versions. Client reads
+   `SUPERVISOR_TOKEN` first, falls back to explicit `HA_URL`/`HA_TOKEN`
+   env vars for local development.
 
-6. **DST + scheduler.** APScheduler's `cron` trigger with a tz argument should handle DST, but needs verification under spring-forward (missing hour) and fall-back (duplicated hour) with a midnight rollover. Write two explicit tests.
+### Closed by earlier milestones
 
-7. **WebSocket through Ingress.** Confirm Supervisor's Ingress proxy upgrades WebSocket correctly with the default add-on config.
+5. **Alembic at runtime — SETTLED.** Programmatic `Config`, migrations ship
+   inside the package.
+6. **DST + scheduler — ACCEPTED.** Date-only recurrence is unit-tested
+   across spring-forward / fall-back. The APScheduler cron side only
+   exercises in a live install.
+7. **WebSocket through Ingress — NOT VERIFIABLE outside of an installed
+   add-on.** Starlette/FastAPI WS works under TestClient; the add-on will
+   verify on first real install.
+8. **`share` map — DROPPED.** See §5.
 
-8. **Add-on option `share` map usage.** The prompt mentions `map: [- type: share]` but `share` is only needed if we want avatars visible outside the add-on. If not required for v1, drop this to shrink the permission surface. → Default: drop it unless we find a user-facing reason to keep.
+### New open question from the probe
+
+- **We can't *create* `todo.*` entities from an add-on.** Add-ons are not
+  integrations. Users must provision one Local To-do per family member.
+  We store each mapping in a new nullable `member.ha_todo_entity_id`
+  column; if unset the bridge skips todo sync for that member but still
+  publishes sensors + events. Instructions live in `INSTALL.md` §"HA
+  Todo Setup".
 
 ---
 
@@ -319,8 +376,8 @@ These are explicitly out of scope for v1, but we leave the architecture unbent s
 1. ☑ Add-on manifest + Dockerfile boots cleanly — commit `d058db9`
 2. ☑ DB + models + Alembic — commit `9c2aea4`
 3. ☑ Recurrence + instance generation + scheduler — commit `5d124dc`
-4. ☑ API + auth — this milestone
-5. ☐ HA bridge
+4. ☑ API + auth — commit `863abde`
+5. ☑ HA bridge — this milestone
 6. ☐ SPA skeleton
 7. ☐ SPA polish + card
 8. ☐ Tests + CI
@@ -336,3 +393,4 @@ Stop and summarize for the human after each.
 - **2026-04-21** — Milestone 2 complete. Added §4 entries #21–#28 covering DB conventions, PRAGMAs, Alembic integration, and the non-obvious WAL-backup pitfall we hit during integration testing. No new prompt deviations.
 - **2026-04-21** — Milestone 3 complete. Added §4 entries #29–#33 (streak-as-of-yesterday, milestone transition semantics, catch-up rollover, scheduler skip flag, UTC fallback). Two new prompt-tree additions logged in §5 (`services/` dir, `timezone` option). Caught a real-world-feel bug while testing — today's PENDING instances breaking the streak on the same rollover that generated them — documented as #29.
 - **2026-04-21** — Milestone 4 complete. Added §4 entries #34–#38 (parent JWT + refresh, error envelope with request IDs, WS notification-only protocol, inline instance generation on chore mutations, explicit MemberStats initialization). No new prompt deviations. 188 tests total (93 new): full HTTP coverage of every router, auth flow edge cases, WS hello/ping-pong/broadcast, global error shape, and service-level tests for undo-window expiry that need injected time.
+- **2026-04-21** — Milestone 5 complete. Live probe against HA 2026.4.1 resolved §8 #1 and shaped the bridge design. Added §4 entries #39–#46 (async worker with debounce + backoff, env-based client discovery, deferred events, FC tag identity pattern, inline stats recompute, tz fallback chain, Local To-do provisioning flow, blocking startup reconcile). Two new §5 deviations (user-managed Local To-do entities, `ha_todo_entity_id` column). 218 tests total (30 new): HTTP-level `HAClient` via `httpx.MockTransport`, bridge worker behaviour with a `FakeHAClient` (coalesce, backlog cap, todo create/update flow), reconciler convergence paths (create / update / delete orphans / record UID-from-match), full end-to-end via a monkey-patched `make_client_from_env` showing a completion drives the right set of HA calls and event-retry on `HAUnavailableError`.

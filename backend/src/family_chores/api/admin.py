@@ -7,6 +7,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from family_chores.api.deps import (
+    get_bridge,
+    get_effective_timezone,
     get_options,
     get_remote_user,
     get_session,
@@ -21,6 +23,7 @@ from family_chores.api.schemas import (
 from family_chores.config import Options
 from family_chores.core.time import local_today
 from family_chores.db.models import ActivityLog, Member
+from family_chores.ha.bridge import BridgeProtocol
 from family_chores.services.stats_service import recompute_stats_for_member
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_parent)])
@@ -32,8 +35,10 @@ async def rebuild_stats(
     session: AsyncSession = Depends(get_session),
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
+    bridge: BridgeProtocol = Depends(get_bridge),
+    tz: str = Depends(get_effective_timezone),
 ) -> dict[str, int]:
-    today = local_today(opts.effective_timezone)
+    today = local_today(tz)
     ids = list((await session.execute(select(Member.id))).scalars().all())
     for mid in ids:
         await recompute_stats_for_member(
@@ -41,6 +46,9 @@ async def rebuild_stats(
         )
     session.add(ActivityLog(actor=user, action="stats_rebuilt", payload={"members": len(ids)}))
     await session.commit()
+    for mid in ids:
+        bridge.notify_member_dirty(mid)
+    bridge.notify_approvals_dirty()
     await ws.broadcast({"type": EVT_STATS_REBUILT, "members": len(ids)})
     return {"members_updated": len(ids)}
 

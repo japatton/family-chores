@@ -42,6 +42,7 @@ class MemberRead(BaseModel):
     color: str
     display_mode: DisplayMode
     requires_approval: bool
+    ha_todo_entity_id: str | None
     stats: MemberStatsRead
 
     model_config = ConfigDict(from_attributes=True)
@@ -54,6 +55,7 @@ class MemberCreate(BaseModel):
     color: str = Field("#4f46e5", max_length=16)
     display_mode: DisplayMode = DisplayMode.KID_STANDARD
     requires_approval: bool = False
+    ha_todo_entity_id: str | None = Field(None, max_length=128, pattern=r"^todo\.[a-z0-9_]+$")
 
 
 class MemberUpdate(BaseModel):
@@ -62,6 +64,7 @@ class MemberUpdate(BaseModel):
     color: str | None = Field(None, max_length=16)
     display_mode: DisplayMode | None = None
     requires_approval: bool | None = None
+    ha_todo_entity_id: str | None = Field(None, max_length=128, pattern=r"^todo\.[a-z0-9_]+$")
 
 
 # ─── chores ───────────────────────────────────────────────────────────────

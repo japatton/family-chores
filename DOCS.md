@@ -29,8 +29,14 @@ they are a one-way mirror of its internal database.
   `points_this_week`, `streak`, `today_progress_pct`, `member_id`.
 - `sensor.family_chores_<slug>_streak` — state = current streak in days.
 - `sensor.family_chores_pending_approvals` — state = count across all members.
-- `todo.family_chores_<slug>` — one todo list per member, one item per chore
-  instance with a due date. HA surfaces these on its calendar automatically.
+
+### Todo / calendar
+
+Per-member `todo.*` entities must be **user-created** via the Local To-do
+integration (the add-on isn't a HA integration and can't create entities).
+See `INSTALL.md` "HA To-do Setup". Once you map a member to their Local
+To-do entity, Family Chores manages items with `[FC#<id>]` prefixes on
+that list; HA surfaces them on its calendar automatically.
 
 ## Events fired
 

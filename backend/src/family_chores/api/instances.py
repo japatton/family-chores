@@ -1,4 +1,14 @@
-"""Per-instance state transitions + the "today" aggregate view."""
+"""Per-instance state transitions + the "today" aggregate view.
+
+Each transition:
+  1. Runs the pure state change in `services.instance_actions`.
+  2. Recomputes the affected member's stats inline so the response body
+     (and the `/today` view) reflect the new totals immediately.
+  3. Commits.
+  4. Notifies the HA bridge (member sensors + todo item + approvals count)
+     and fires the relevant `family_chores_*` event.
+  5. Broadcasts a `instance_updated` WebSocket event.
+"""
 
 from __future__ import annotations
 
@@ -10,12 +20,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from family_chores.api.deps import (
+    get_bridge,
+    get_effective_timezone,
     get_options,
     get_remote_user,
     get_session,
     get_ws_manager,
     require_parent,
 )
+from family_chores.api.errors import NotFoundError
 from family_chores.api.events import EVT_INSTANCE_UPDATED, WSManager
 from family_chores.api.schemas import (
     AdjustPointsRequest,
@@ -35,6 +48,7 @@ from family_chores.db.models import (
     Member,
     MemberStats,
 )
+from family_chores.ha.bridge import BridgeProtocol
 from family_chores.services.instance_actions import (
     adjust_member_points,
     approve_instance,
@@ -43,10 +57,15 @@ from family_chores.services.instance_actions import (
     skip_instance,
     undo_complete,
 )
+from family_chores.services.stats_service import recompute_stats_for_member
 
 router = APIRouter(prefix="/api", tags=["instances"])
 
 _instance_router = APIRouter(prefix="/instances")
+
+
+EVENT_COMPLETED = "family_chores_completed"
+EVENT_APPROVED = "family_chores_approved"
 
 
 @_instance_router.get("", response_model=list[InstanceRead])
@@ -81,9 +100,43 @@ async def get_instance(
 ) -> InstanceRead:
     inst = await session.get(ChoreInstance, instance_id)
     if inst is None:
-        from family_chores.api.errors import NotFoundError
         raise NotFoundError(f"instance {instance_id} not found")
     return InstanceRead.model_validate(inst)
+
+
+async def _finalize_action(
+    session: AsyncSession,
+    inst: ChoreInstance,
+    *,
+    opts: Options,
+    tz: str,
+) -> None:
+    today = local_today(tz)
+    await recompute_stats_for_member(
+        session, inst.member_id, today=today, week_starts_on=opts.week_starts_on
+    )
+    await session.commit()
+
+
+def _notify_bridge(
+    bridge: BridgeProtocol,
+    inst: ChoreInstance,
+    *,
+    event: str | None = None,
+) -> None:
+    bridge.notify_instance_changed(inst.id)
+    bridge.notify_member_dirty(inst.member_id)
+    bridge.notify_approvals_dirty()
+    if event is not None:
+        bridge.enqueue_event(
+            event,
+            {
+                "instance_id": inst.id,
+                "chore_id": inst.chore_id,
+                "member_id": inst.member_id,
+                "points": inst.points_awarded,
+            },
+        )
 
 
 async def _broadcast_updated(ws: WSManager, inst: ChoreInstance) -> None:
@@ -97,15 +150,23 @@ async def _broadcast_updated(ws: WSManager, inst: ChoreInstance) -> None:
     )
 
 
+# ─── state transitions ────────────────────────────────────────────────────
+
+
 @_instance_router.post("/{instance_id}/complete", response_model=InstanceRead)
 async def complete(
     instance_id: int,
     session: AsyncSession = Depends(get_session),
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
+    bridge: BridgeProtocol = Depends(get_bridge),
+    opts: Options = Depends(get_options),
+    tz: str = Depends(get_effective_timezone),
 ) -> InstanceRead:
     inst = await complete_instance(session, instance_id, actor=user)
-    await session.commit()
+    await _finalize_action(session, inst, opts=opts, tz=tz)
+    event = EVENT_COMPLETED if inst.state is InstanceState.DONE else None
+    _notify_bridge(bridge, inst, event=event)
     await _broadcast_updated(ws, inst)
     return InstanceRead.model_validate(inst)
 
@@ -116,9 +177,13 @@ async def undo(
     session: AsyncSession = Depends(get_session),
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
+    bridge: BridgeProtocol = Depends(get_bridge),
+    opts: Options = Depends(get_options),
+    tz: str = Depends(get_effective_timezone),
 ) -> InstanceRead:
     inst = await undo_complete(session, instance_id, actor=user)
-    await session.commit()
+    await _finalize_action(session, inst, opts=opts, tz=tz)
+    _notify_bridge(bridge, inst)
     await _broadcast_updated(ws, inst)
     return InstanceRead.model_validate(inst)
 
@@ -129,10 +194,14 @@ async def approve(
     session: AsyncSession = Depends(get_session),
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
+    bridge: BridgeProtocol = Depends(get_bridge),
+    opts: Options = Depends(get_options),
+    tz: str = Depends(get_effective_timezone),
     _parent=Depends(require_parent),
 ) -> InstanceRead:
     inst = await approve_instance(session, instance_id, actor=user)
-    await session.commit()
+    await _finalize_action(session, inst, opts=opts, tz=tz)
+    _notify_bridge(bridge, inst, event=EVENT_APPROVED)
     await _broadcast_updated(ws, inst)
     return InstanceRead.model_validate(inst)
 
@@ -144,10 +213,14 @@ async def reject(
     session: AsyncSession = Depends(get_session),
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
+    bridge: BridgeProtocol = Depends(get_bridge),
+    opts: Options = Depends(get_options),
+    tz: str = Depends(get_effective_timezone),
     _parent=Depends(require_parent),
 ) -> InstanceRead:
     inst = await reject_instance(session, instance_id, actor=user, reason=body.reason)
-    await session.commit()
+    await _finalize_action(session, inst, opts=opts, tz=tz)
+    _notify_bridge(bridge, inst)
     await _broadcast_updated(ws, inst)
     return InstanceRead.model_validate(inst)
 
@@ -159,10 +232,14 @@ async def skip(
     session: AsyncSession = Depends(get_session),
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
+    bridge: BridgeProtocol = Depends(get_bridge),
+    opts: Options = Depends(get_options),
+    tz: str = Depends(get_effective_timezone),
     _parent=Depends(require_parent),
 ) -> InstanceRead:
     inst = await skip_instance(session, instance_id, actor=user, reason=body.reason)
-    await session.commit()
+    await _finalize_action(session, inst, opts=opts, tz=tz)
+    _notify_bridge(bridge, inst)
     await _broadcast_updated(ws, inst)
     return InstanceRead.model_validate(inst)
 
@@ -179,15 +256,15 @@ async def adjust_points(
     session: AsyncSession = Depends(get_session),
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
+    bridge: BridgeProtocol = Depends(get_bridge),
     _parent=Depends(require_parent),
 ) -> MemberStatsRead:
     stats = await adjust_member_points(
         session, member_id, actor=user, delta=body.delta, reason=body.reason
     )
     await session.commit()
-    await ws.broadcast(
-        {"type": "member_updated", "member_id": member_id}
-    )
+    bridge.notify_member_dirty(member_id)
+    await ws.broadcast({"type": "member_updated", "member_id": member_id})
     return MemberStatsRead(
         points_total=stats.points_total,
         points_this_week=stats.points_this_week,
@@ -197,17 +274,17 @@ async def adjust_points(
     )
 
 
-# ─── today aggregate view ────────────────────────────────────────────────
+# ─── today aggregate view ─────────────────────────────────────────────────
 
 _today_router = APIRouter()
 
 
 @_today_router.get("/today", response_model=TodayView)
 async def today_view(
-    opts: Options = Depends(get_options),
+    tz: str = Depends(get_effective_timezone),
     session: AsyncSession = Depends(get_session),
 ) -> TodayView:
-    today = local_today(opts.effective_timezone)
+    today = local_today(tz)
 
     member_result = await session.execute(
         select(Member).options(selectinload(Member.stats)).order_by(Member.name)
@@ -233,7 +310,12 @@ async def today_view(
         done = sum(
             1
             for inst, _ in entries
-            if inst.state in {InstanceState.DONE, InstanceState.DONE_UNAPPROVED, InstanceState.SKIPPED}
+            if inst.state
+            in {
+                InstanceState.DONE,
+                InstanceState.DONE_UNAPPROVED,
+                InstanceState.SKIPPED,
+            }
         )
         progress = int((done / len(entries)) * 100) if entries else 0
 

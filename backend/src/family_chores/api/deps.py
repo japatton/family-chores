@@ -32,6 +32,20 @@ def get_jwt_secret(request: Request) -> str:
     return request.app.state.jwt_secret
 
 
+def get_bridge(request: Request):
+    """Return the HA bridge (either HABridge or NoOpBridge)."""
+    return request.app.state.bridge
+
+
+def get_effective_timezone(request: Request) -> str:
+    """Cached HA tz (if fetched at startup), override, or UTC."""
+    cached = getattr(request.app.state, "effective_timezone", None)
+    if isinstance(cached, str) and cached:
+        return cached
+    opts: Options = request.app.state.options
+    return opts.effective_timezone
+
+
 def get_remote_user(request: Request) -> str:
     """Identity from the Ingress `X-Remote-User` header.
 

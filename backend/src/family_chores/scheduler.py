@@ -2,12 +2,11 @@
 
 Two jobs:
   - `midnight_rollover` — cron, 00:00 in the configured timezone. Runs the
-    rollover pipeline: mark overdue, recompute stats, generate instances.
-    APScheduler's `CronTrigger(timezone=…)` handles DST correctly — on
-    spring-forward nights the 00:00 slot still exists; on fall-back the
-    00:00 slot exists once.
-  - `ha_reconcile` — interval, every 15 min. Stub until milestone 5 gives
-    it real work; keeping it in place now so the scheduler config is stable.
+    rollover pipeline (mark overdue, recompute stats, generate instances)
+    and enqueues streak-milestone events into the HA bridge.
+  - `ha_reconcile` — interval, every 15 min. Drives
+    `family_chores.ha.reconcile.reconcile_once` so HA todo state converges
+    with SQLite even when individual bridge calls dropped.
 """
 
 from __future__ import annotations
@@ -20,6 +19,9 @@ from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from family_chores.core.time import local_today
+from family_chores.ha.bridge import BridgeProtocol
+from family_chores.ha.client import HAClient
+from family_chores.ha.reconcile import reconcile_once
 from family_chores.services.rollover_service import run_rollover
 
 log = logging.getLogger(__name__)
@@ -28,12 +30,16 @@ MIDNIGHT_JOB_ID = "midnight_rollover"
 RECONCILE_JOB_ID = "ha_reconcile"
 RECONCILE_INTERVAL_MIN = 15
 
+_EVENT_STREAK_MILESTONE = "family_chores_streak_milestone"
+
 
 def make_scheduler(
     session_factory: async_sessionmaker[AsyncSession],
     *,
     tz: str,
     week_starts_on: str,
+    bridge: BridgeProtocol | None = None,
+    ha_client: HAClient | None = None,
 ) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone=tz)
 
@@ -54,13 +60,34 @@ def make_scheduler(
                     summary.members_updated,
                     len(summary.milestones),
                 )
+                if bridge is not None:
+                    for member_id, streak_days in summary.milestones:
+                        bridge.enqueue_event(
+                            _EVENT_STREAK_MILESTONE,
+                            {"member_id": member_id, "streak_days": streak_days},
+                        )
+                        bridge.notify_member_dirty(member_id)
             except Exception:
                 await session.rollback()
                 log.exception("midnight rollover failed")
 
     async def reconcile_job() -> None:
-        # Milestone 5 will fill this in with HA entity reconciliation.
-        log.debug("ha reconcile tick (stub)")
+        if ha_client is None or bridge is None:
+            log.debug("ha reconcile: no HA client, skipping")
+            return
+        today = local_today(tz)
+        try:
+            result = await reconcile_once(ha_client, session_factory, today=today)
+            log.info(
+                "ha reconcile: members=%d created=%d updated=%d deleted=%d errors=%d",
+                result.members_processed,
+                result.items_created,
+                result.items_updated,
+                result.items_deleted,
+                len(result.errors),
+            )
+        except Exception:
+            log.exception("ha reconcile failed")
 
     scheduler.add_job(
         midnight_job,

@@ -30,8 +30,49 @@ In the add-on's **Configuration** tab:
 | `log_level` | `info` | Bump to `debug` when filing a bug report. |
 | `week_starts_on` | `monday` | Affects the weekly points reset boundary. |
 | `sound_default` | `false` | Completion chime default for new browser sessions. |
+| `timezone` | `""` | Optional IANA name. Empty = follow HA (fetched from `/api/config`). |
 
 Changes to any option **restart** the add-on.
+
+## HA To-do Setup (required for calendar + todo sync)
+
+Home Assistant surfaces due-dated todo items on the calendar automatically,
+and that's where Family Chores' calendar view comes from. Because add-ons
+can't create entities themselves, you create one **Local To-do** list per
+family member; Family Chores fills it in.
+
+### Steps
+
+1. **Settings → Devices & Services → Add Integration → "Local To-do"**.
+2. Give it a recognisable name — e.g. `Alice Chores`.
+3. Repeat for each family member.
+4. After creating, open **Developer Tools → States** and filter for `todo.`.
+   Copy the entity ID for each list (`todo.alice_chores`, etc.).
+5. In **Family Chores → parent mode → member detail**, paste that entity ID
+   into the "HA to-do entity" field for the matching member.
+
+Once saved, Family Chores will:
+
+- Add a todo item for each of the member's upcoming chore instances.
+- Flip items to **completed** when the kid marks the chore done (and again,
+  if needed, after parent approval).
+- Remove orphan items on startup and every 15 minutes (a safety reconcile).
+
+Items Family Chores manages start with `[FC#<id>]`; manually-added items
+outside that prefix are left alone.
+
+### If you skip this
+
+Sensors (`sensor.family_chores_<slug>_points`, `_streak`, and the global
+`pending_approvals` counter) still publish. Events still fire. You just
+lose the calendar / todo-list view in HA; the add-on's own UI is unaffected.
+
+### Permissions
+
+The add-on talks to HA via the Supervisor proxy using the automatically
+provisioned `SUPERVISOR_TOKEN`. No manual token setup. If you see 401s in
+the add-on log, check that the manifest still grants `hassio_api: true`,
+`hassio_role: default`, and `homeassistant_api: true`.
 
 ## Local development (no HA required)
 

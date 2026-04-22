@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from family_chores.api.deps import (
+    get_bridge,
     get_remote_user,
     get_session,
     get_ws_manager,
@@ -27,6 +28,7 @@ from family_chores.api.schemas import (
     MemberUpdate,
 )
 from family_chores.db.models import ActivityLog, Member, MemberStats
+from family_chores.ha.bridge import BridgeProtocol
 
 router = APIRouter(prefix="/api/members", tags=["members"])
 
@@ -47,6 +49,7 @@ def _to_read(member: Member, stats: MemberStats | None) -> MemberRead:
         color=member.color,
         display_mode=member.display_mode,
         requires_approval=member.requires_approval,
+        ha_todo_entity_id=member.ha_todo_entity_id,
         stats=stats_payload,
     )
 
@@ -81,6 +84,7 @@ async def create_member(
     session: AsyncSession = Depends(get_session),
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
+    bridge: BridgeProtocol = Depends(get_bridge),
     _parent=Depends(require_parent),
 ) -> MemberRead:
     dupe = await session.execute(select(Member).where(Member.slug == body.slug))
@@ -94,10 +98,13 @@ async def create_member(
         color=body.color,
         display_mode=body.display_mode,
         requires_approval=body.requires_approval,
+        ha_todo_entity_id=body.ha_todo_entity_id,
     )
     session.add(member)
     await session.flush()
-    stats = MemberStats(member_id=member.id)
+    stats = MemberStats(
+        member_id=member.id, points_total=0, points_this_week=0, streak=0
+    )
     session.add(stats)
     session.add(
         ActivityLog(
@@ -107,6 +114,7 @@ async def create_member(
         )
     )
     await session.commit()
+    bridge.notify_member_dirty(member.id)
     await ws.broadcast({"type": EVT_MEMBER_CREATED, "member_id": member.id})
     return _to_read(member, stats)
 
@@ -118,6 +126,7 @@ async def update_member(
     session: AsyncSession = Depends(get_session),
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
+    bridge: BridgeProtocol = Depends(get_bridge),
     _parent=Depends(require_parent),
 ) -> MemberRead:
     member = await _load_by_slug(session, slug)
@@ -136,6 +145,7 @@ async def update_member(
             )
         )
     await session.commit()
+    bridge.notify_member_dirty(member.id)
     await ws.broadcast({"type": EVT_MEMBER_UPDATED, "member_id": member.id})
     return _to_read(member, member.stats)
 
