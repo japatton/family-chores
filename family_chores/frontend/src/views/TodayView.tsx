@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useToday } from '../api/hooks'
 import { MemberTile } from '../components/MemberTile'
 
@@ -45,18 +46,60 @@ export function TodayView() {
 
   if (members.length === 0) {
     return (
-      <div className="grid place-items-center min-h-[50vh] text-center max-w-xl mx-auto font-display">
-        <div>
-          <div className="text-[clamp(5rem,12vw,9rem)] mb-4 animate-sparkle" aria-hidden>
+      <div className="grid place-items-center min-h-[60vh] font-display">
+        <div className="relative max-w-2xl w-full rounded-xl5 bg-white p-10 sm:p-14 shadow-tile text-center overflow-hidden">
+          {/* scatter of decorative emojis so the blank state looks alive */}
+          <span
+            aria-hidden
+            className="absolute -top-4 -left-2 text-fluid-2xl rotate-[-15deg] animate-sparkle"
+          >
+            ✨
+          </span>
+          <span
+            aria-hidden
+            className="absolute top-6 right-4 text-fluid-xl rotate-[12deg] animate-sparkle"
+            style={{ animationDelay: '400ms' }}
+          >
+            ⭐
+          </span>
+          <span
+            aria-hidden
+            className="absolute bottom-8 -left-2 text-fluid-xl rotate-[-20deg] animate-sparkle"
+            style={{ animationDelay: '700ms' }}
+          >
+            🎉
+          </span>
+          <span
+            aria-hidden
+            className="absolute -bottom-4 right-6 text-fluid-2xl rotate-[18deg] animate-sparkle"
+            style={{ animationDelay: '250ms' }}
+          >
+            🏆
+          </span>
+
+          <div
+            className="text-[clamp(6rem,16vw,11rem)] leading-none animate-pop-in"
+            aria-hidden
+          >
             👪
           </div>
-          <div className="text-fluid-xl font-black text-brand-900">
-            Add your first family member
-          </div>
+          <h1 className="mt-4 text-fluid-2xl font-black bg-gradient-to-r from-brand-600 via-bubblegum-500 to-candy-500 bg-clip-text text-transparent">
+            Welcome to Family Chores!
+          </h1>
           <p className="mt-4 text-fluid-base text-brand-700 font-sans">
-            Tap <span className="font-black">Parent</span> at the top to set a
-            PIN, then add members and chores. Kids tap their tile to see
-            what's up today.
+            Add your first family member to get started. Pick a color,
+            choose an emoji, and assign them some chores — they'll tap
+            their tile each day to see what's up.
+          </p>
+          <Link
+            to="/parent"
+            className="mt-8 inline-flex items-center gap-3 min-h-touch px-8 rounded-2xl bg-brand-600 text-white font-black text-fluid-base shadow-tile press"
+          >
+            <span aria-hidden>🔒</span>
+            Open Parent Mode
+          </Link>
+          <p className="mt-6 text-fluid-xs font-semibold text-brand-700/70 uppercase tracking-wider">
+            Set a PIN, then add members + chores
           </p>
         </div>
       </div>

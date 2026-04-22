@@ -17,10 +17,19 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="flex items-center justify-between px-6 py-4 sm:px-10 sm:py-6 border-b border-brand-100 bg-white/70 backdrop-blur sticky top-0 z-10">
+      <header className="flex items-center justify-between px-6 py-4 sm:px-10 sm:py-6 border-b-2 border-brand-100 sticky top-0 z-10 font-display shadow-pop"
+        style={{
+          backgroundImage:
+            'linear-gradient(90deg, rgba(236,72,153,0.12), rgba(99,102,241,0.18), rgba(14,165,233,0.12))',
+          backgroundColor: 'rgba(255,255,255,0.85)',
+          backdropFilter: 'blur(12px)',
+        }}
+      >
         <Link to="/" className="flex items-center gap-3 text-fluid-lg font-black text-brand-700">
-          <span aria-hidden className="text-fluid-xl">🧹</span>
-          <span>Family Chores</span>
+          <span aria-hidden className="text-fluid-xl animate-sparkle">🧹</span>
+          <span className="bg-gradient-to-r from-brand-700 via-bubblegum-500 to-candy-500 bg-clip-text text-transparent">
+            Family Chores
+          </span>
         </Link>
         <nav className="flex items-center gap-3">
           {!connected && (
