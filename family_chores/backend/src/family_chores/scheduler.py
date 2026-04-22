@@ -13,9 +13,13 @@ from __future__ import annotations
 
 import logging
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
-from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
-from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-untyped]
+# apscheduler's py.typed coverage varies across 3.11.x patch releases,
+# so whether mypy treats these as untyped or fine depends on the exact
+# resolved version. Combining `import-untyped` with `unused-ignore`
+# makes the suppression inert in either environment.
+from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped, unused-ignore]
+from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped, unused-ignore]
+from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-untyped, unused-ignore]
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from family_chores.core.time import local_today
