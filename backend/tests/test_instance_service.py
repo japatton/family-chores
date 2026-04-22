@@ -18,7 +18,9 @@ async def _seed_member(session, slug="alice"):
     return m
 
 
-async def _seed_chore(session, members, *, recurrence=RecurrenceType.DAILY, config=None, active=True):
+async def _seed_chore(
+    session, members, *, recurrence=RecurrenceType.DAILY, config=None, active=True
+):
     c = Chore(
         name="Dishes",
         points=5,
@@ -51,7 +53,7 @@ async def test_generate_creates_one_row_per_member_per_due_date(async_session):
 
     today = date(2026, 4, 21)
     count = await generate_instances(async_session, today=today, horizon_days=2)
-    # 2 members × 3 dates (today + 2) = 6
+    # 2 members x3 dates (today + 2) = 6
     assert count == 6
 
     insts = await _instances(async_session)

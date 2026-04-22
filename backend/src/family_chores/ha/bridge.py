@@ -39,12 +39,10 @@ from family_chores.db.models import (
     ChoreInstance,
     InstanceState,
     Member,
-    MemberStats,
 )
 from family_chores.ha.client import (
     HAClient,
     HAClientError,
-    HAServerError,
     HAUnauthorizedError,
     HAUnavailableError,
 )
@@ -173,7 +171,7 @@ class HABridge(BridgeProtocol):
         if self._worker is not None:
             try:
                 await asyncio.wait_for(self._worker, timeout=5.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self._worker.cancel()
             self._worker = None
         await self._client.aclose()
@@ -231,7 +229,7 @@ class HABridge(BridgeProtocol):
                     "permissions or HA_TOKEN. Dropping queued work."
                 )
                 self._drain_all()
-            except Exception:  # noqa: BLE001 — last-resort; network / DB / misc
+            except Exception:
                 log.exception("bridge flush failed; will retry")
                 await asyncio.sleep(self._backoff)
                 self._backoff = min(self._backoff * 2, _BACKOFF_MAX)
@@ -423,12 +421,12 @@ class HABridge(BridgeProtocol):
 
 
 __all__ = [
-    "BridgeProtocol",
-    "HABridge",
-    "NoOpBridge",
     "SENSOR_PENDING_APPROVALS",
     "TODO_STATUS_COMPLETED",
     "TODO_STATUS_NEEDS_ACTION",
+    "BridgeProtocol",
+    "HABridge",
+    "NoOpBridge",
     "fc_tag",
     "sensor_entity_for_member_points",
     "sensor_entity_for_member_streak",

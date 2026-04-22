@@ -14,8 +14,8 @@ from family_chores.ha.client import (
     HAClient,
     HAClientError,
     HAServerError,
-    HAUnavailableError,
     HAUnauthorizedError,
+    HAUnavailableError,
     make_client_from_env,
 )
 

@@ -33,6 +33,7 @@ from family_chores.config import Options
 from family_chores.core.time import local_today
 from family_chores.db.models import ActivityLog, Chore, Member
 from family_chores.ha.bridge import BridgeProtocol
+from family_chores.security import ParentClaim
 from family_chores.services.instance_service import generate_instances
 
 router = APIRouter(prefix="/api/chores", tags=["chores"])
@@ -108,7 +109,7 @@ async def create_chore(
     bridge: BridgeProtocol = Depends(get_bridge),
     opts: Options = Depends(get_options),
     tz: str = Depends(get_effective_timezone),
-    _parent=Depends(require_parent),
+    _parent: ParentClaim = Depends(require_parent),
 ) -> ChoreRead:
     members = await _resolve_members(session, body.assigned_member_ids)
     chore = Chore(
@@ -154,7 +155,7 @@ async def update_chore(
     bridge: BridgeProtocol = Depends(get_bridge),
     opts: Options = Depends(get_options),
     tz: str = Depends(get_effective_timezone),
-    _parent=Depends(require_parent),
+    _parent: ParentClaim = Depends(require_parent),
 ) -> ChoreRead:
     chore = await _load_with_members(session, chore_id)
 
@@ -208,7 +209,7 @@ async def delete_chore(
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
     bridge: BridgeProtocol = Depends(get_bridge),
-    _parent=Depends(require_parent),
+    _parent: ParentClaim = Depends(require_parent),
 ) -> None:
     chore = await _load_with_members(session, chore_id)
     affected_member_ids = [m.id for m in chore.assigned_members]

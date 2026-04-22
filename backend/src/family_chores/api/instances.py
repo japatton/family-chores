@@ -46,9 +46,9 @@ from family_chores.db.models import (
     ChoreInstance,
     InstanceState,
     Member,
-    MemberStats,
 )
 from family_chores.ha.bridge import BridgeProtocol
+from family_chores.security import ParentClaim
 from family_chores.services.instance_actions import (
     adjust_member_points,
     approve_instance,
@@ -197,7 +197,7 @@ async def approve(
     bridge: BridgeProtocol = Depends(get_bridge),
     opts: Options = Depends(get_options),
     tz: str = Depends(get_effective_timezone),
-    _parent=Depends(require_parent),
+    _parent: ParentClaim = Depends(require_parent),
 ) -> InstanceRead:
     inst = await approve_instance(session, instance_id, actor=user)
     await _finalize_action(session, inst, opts=opts, tz=tz)
@@ -216,7 +216,7 @@ async def reject(
     bridge: BridgeProtocol = Depends(get_bridge),
     opts: Options = Depends(get_options),
     tz: str = Depends(get_effective_timezone),
-    _parent=Depends(require_parent),
+    _parent: ParentClaim = Depends(require_parent),
 ) -> InstanceRead:
     inst = await reject_instance(session, instance_id, actor=user, reason=body.reason)
     await _finalize_action(session, inst, opts=opts, tz=tz)
@@ -235,7 +235,7 @@ async def skip(
     bridge: BridgeProtocol = Depends(get_bridge),
     opts: Options = Depends(get_options),
     tz: str = Depends(get_effective_timezone),
-    _parent=Depends(require_parent),
+    _parent: ParentClaim = Depends(require_parent),
 ) -> InstanceRead:
     inst = await skip_instance(session, instance_id, actor=user, reason=body.reason)
     await _finalize_action(session, inst, opts=opts, tz=tz)
@@ -257,7 +257,7 @@ async def adjust_points(
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
     bridge: BridgeProtocol = Depends(get_bridge),
-    _parent=Depends(require_parent),
+    _parent: ParentClaim = Depends(require_parent),
 ) -> MemberStatsRead:
     stats = await adjust_member_points(
         session, member_id, actor=user, delta=body.delta, reason=body.reason

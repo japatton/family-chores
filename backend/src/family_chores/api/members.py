@@ -29,6 +29,7 @@ from family_chores.api.schemas import (
 )
 from family_chores.db.models import ActivityLog, Member, MemberStats
 from family_chores.ha.bridge import BridgeProtocol
+from family_chores.security import ParentClaim
 
 router = APIRouter(prefix="/api/members", tags=["members"])
 
@@ -85,7 +86,7 @@ async def create_member(
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
     bridge: BridgeProtocol = Depends(get_bridge),
-    _parent=Depends(require_parent),
+    _parent: ParentClaim = Depends(require_parent),
 ) -> MemberRead:
     dupe = await session.execute(select(Member).where(Member.slug == body.slug))
     if dupe.scalar_one_or_none() is not None:
@@ -127,7 +128,7 @@ async def update_member(
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
     bridge: BridgeProtocol = Depends(get_bridge),
-    _parent=Depends(require_parent),
+    _parent: ParentClaim = Depends(require_parent),
 ) -> MemberRead:
     member = await _load_by_slug(session, slug)
 
@@ -156,7 +157,7 @@ async def delete_member(
     session: AsyncSession = Depends(get_session),
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
-    _parent=Depends(require_parent),
+    _parent: ParentClaim = Depends(require_parent),
 ) -> None:
     member = await _load_by_slug(session, slug)
     member_id = member.id

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
+from typing import cast
 
 import jwt
 from fastapi import Depends, Header, Request
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from family_chores.api.errors import AuthRequiredError, ForbiddenError
 from family_chores.api.events import WSManager
 from family_chores.config import Options
+from family_chores.ha.bridge import BridgeProtocol
 from family_chores.security import ParentClaim, decode_parent_token
 
 
@@ -21,20 +23,20 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
 
 
 def get_ws_manager(request: Request) -> WSManager:
-    return request.app.state.ws_manager
+    return cast(WSManager, request.app.state.ws_manager)
 
 
 def get_options(request: Request) -> Options:
-    return request.app.state.options
+    return cast(Options, request.app.state.options)
 
 
 def get_jwt_secret(request: Request) -> str:
-    return request.app.state.jwt_secret
+    return cast(str, request.app.state.jwt_secret)
 
 
-def get_bridge(request: Request):
+def get_bridge(request: Request) -> BridgeProtocol:
     """Return the HA bridge (either HABridge or NoOpBridge)."""
-    return request.app.state.bridge
+    return cast(BridgeProtocol, request.app.state.bridge)
 
 
 def get_effective_timezone(request: Request) -> str:
@@ -89,7 +91,7 @@ def require_parent(claim: ParentClaim | None = Depends(maybe_parent)) -> ParentC
     return claim
 
 
-def require_role(role: str):
+def require_role(role: str) -> Callable[[ParentClaim], ParentClaim]:
     """Factory that returns a dependency enforcing a specific role."""
 
     def _dep(claim: ParentClaim = Depends(require_parent)) -> ParentClaim:

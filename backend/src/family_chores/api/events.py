@@ -63,7 +63,7 @@ class WSManager:
             try:
                 await ws.send_json(event)
                 delivered += 1
-            except Exception:  # noqa: BLE001 — socket dead / disconnected
+            except Exception:
                 dead.append(ws)
         for ws in dead:
             await self.disconnect(ws)

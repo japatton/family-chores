@@ -8,8 +8,8 @@ helpers to convert between UTC and the HA-reported user timezone for
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from datetime import date as date_type
-from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 
@@ -18,19 +18,19 @@ def utcnow() -> datetime:
 
     Naive (no tzinfo) is the DB storage convention — see module docstring.
     """
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def as_utc(dt: datetime) -> datetime:
     """Return `dt` as a naive UTC `datetime` regardless of input tz-awareness."""
     if dt.tzinfo is None:
         return dt
-    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt.astimezone(UTC).replace(tzinfo=None)
 
 
 def to_local(dt: datetime, tz: str) -> datetime:
     """Convert a naive-UTC `dt` into a tz-aware local `datetime` in `tz`."""
-    aware = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+    aware = dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
     return aware.astimezone(ZoneInfo(tz))
 
 

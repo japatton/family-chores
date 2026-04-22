@@ -13,13 +13,12 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from backend.tests._ha_fakes import FakeHAClient
 from fastapi.testclient import TestClient
 
 from family_chores import app as app_module
 from family_chores.app import create_app
 from family_chores.config import Options
-
-from backend.tests._ha_fakes import FakeHAClient
 
 
 @pytest.fixture

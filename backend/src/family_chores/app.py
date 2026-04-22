@@ -39,7 +39,7 @@ from family_chores.core.time import local_today
 from family_chores.db.base import make_async_engine, make_session_factory
 from family_chores.db.startup import BootstrapResult, bootstrap_db
 from family_chores.ha import HABridge, NoOpBridge, make_client_from_env
-from family_chores.ha.client import HAClientError
+from family_chores.ha.client import HAClient, HAClientError
 from family_chores.ha.reconcile import reconcile_once
 from family_chores.scheduler import make_scheduler
 from family_chores.security import ensure_jwt_secret
@@ -53,7 +53,7 @@ _SKIP_SCHEDULER_ENV = "FAMILY_CHORES_SKIP_SCHEDULER"
 
 
 async def _resolve_effective_timezone(
-    opts: Options, client: object | None
+    opts: Options, client: HAClient | None
 ) -> str:
     """Prefer explicit override; else try HA's `/api/config → time_zone`; else UTC."""
     if opts.timezone_override:

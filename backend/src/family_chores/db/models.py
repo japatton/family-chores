@@ -22,7 +22,6 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
-    Enum as SQLEnum,
     ForeignKey,
     Index,
     String,
@@ -30,11 +29,13 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
 )
+from sqlalchemy import (
+    Enum as SQLEnum,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from family_chores.core.time import utcnow
 from family_chores.db.base import Base
-
 
 # ─── enums ───────────────────────────────────────────────────────────────
 

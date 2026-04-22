@@ -46,7 +46,7 @@ async def generate_instances(
         .where(ChoreInstance.date >= today)
         .where(ChoreInstance.date <= end)
     )
-    existing: set[tuple[int, int, date]] = {tuple(row) for row in existing_result.all()}  # type: ignore[misc]
+    existing: set[tuple[int, int, date]] = {tuple(row) for row in existing_result.all()}
 
     new_rows: list[ChoreInstance] = []
     for chore in chores:

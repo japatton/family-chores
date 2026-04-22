@@ -51,7 +51,11 @@ src = ["src"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "PTH", "RUF"]
-ignore = ["B008"]  # FastAPI Depends() in defaults is idiomatic
+ignore = [
+    "B008",    # FastAPI `Depends()` in defaults is idiomatic.
+    "RUF059",  # `for a, b in ...` where one side is unused is fine in tests.
+    "UP042",   # `(str, enum.Enum)` pattern predates StrEnum and works the same.
+]
 
 [tool.mypy]
 python_version = "3.12"
@@ -62,6 +66,7 @@ mypy_path = "src"
 [[tool.mypy.overrides]]
 module = ["apscheduler.*"]
 ignore_missing_imports = true
+disable_error_code = ["import-untyped"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

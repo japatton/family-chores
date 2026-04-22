@@ -97,9 +97,9 @@ async def test_rollover_recomputes_points_and_streak(async_session):
 
     stats = await async_session.get(MemberStats, alice.id)
     assert stats is not None
-    # 4 done days × 5 points = 20 lifetime
+    # 4 done days x5 points = 20 lifetime
     assert stats.points_total == 20
-    # This week (Mon 2026-04-20) has 1 all-done day × 5 pts.
+    # This week (Mon 2026-04-20) has 1 all-done day x5 pts.
     assert stats.week_anchor == date(2026, 4, 20)
     assert stats.points_this_week == 5
     assert stats.streak == 4

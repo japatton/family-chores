@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+from backend.tests._ha_fakes import FakeHAClient
 
 from family_chores.db.models import (
     Chore,
@@ -15,15 +16,13 @@ from family_chores.db.models import (
     RecurrenceType,
 )
 from family_chores.ha.bridge import (
-    HABridge,
     SENSOR_PENDING_APPROVALS,
+    HABridge,
     fc_tag,
     sensor_entity_for_member_points,
     sensor_entity_for_member_streak,
     todo_summary_for,
 )
-
-from backend.tests._ha_fakes import FakeHAClient
 
 
 async def _seed(session, *, ha_todo_entity_id="todo.alice"):

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date as date_type
 from datetime import datetime
 from datetime import time as time_type
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -90,8 +90,11 @@ def validate_recurrence_config(rt: RecurrenceType, cfg: dict[str, Any]) -> dict[
             raise ValueError("specific_days 'days' must use ISO weekdays 1-7")
         return {"days": sorted(set(day_ints))}
     if rt is RecurrenceType.EVERY_N_DAYS:
+        n_raw = cfg.get("n")
+        if n_raw is None:
+            raise ValueError("every_n_days 'n' is required")
         try:
-            n = int(cfg.get("n"))
+            n = int(n_raw)
         except (TypeError, ValueError) as exc:
             raise ValueError("every_n_days 'n' must be an integer") from exc
         if n < 1:
@@ -105,8 +108,11 @@ def validate_recurrence_config(rt: RecurrenceType, cfg: dict[str, Any]) -> dict[
             raise ValueError("every_n_days 'anchor' must be a valid ISO date") from exc
         return {"n": n, "anchor": anchor}
     if rt is RecurrenceType.MONTHLY_ON_DATE:
+        day_raw = cfg.get("day")
+        if day_raw is None:
+            raise ValueError("monthly_on_date 'day' is required")
         try:
-            day = int(cfg.get("day"))
+            day = int(day_raw)
         except (TypeError, ValueError) as exc:
             raise ValueError("monthly_on_date 'day' must be an integer") from exc
         if not 1 <= day <= 31:
@@ -156,7 +162,9 @@ class ChoreCreate(BaseModel):
 
     @field_validator("recurrence_config")
     @classmethod
-    def _check_cfg(cls, v: dict[str, Any], info) -> dict[str, Any]:
+    def _check_cfg(
+        cls, v: dict[str, Any], info: Any
+    ) -> dict[str, Any]:
         rt = info.data.get("recurrence_type")
         if rt is None:
             return v
@@ -196,12 +204,12 @@ class InstanceRead(BaseModel):
 
 
 class RejectRequest(BaseModel):
-    reason: str | None = Field(None, max_length=256)
+    reason: Annotated[str | None, Field(max_length=256)] = None
 
 
 class AdjustPointsRequest(BaseModel):
     delta: int
-    reason: str | None = Field(None, max_length=256)
+    reason: Annotated[str | None, Field(max_length=256)] = None
 
 
 # ─── today view ───────────────────────────────────────────────────────────

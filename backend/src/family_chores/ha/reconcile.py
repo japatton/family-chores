@@ -29,10 +29,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
-from family_chores.db.models import Chore, ChoreInstance, InstanceState, Member
+from family_chores.db.models import ChoreInstance, Member
 from family_chores.ha.bridge import (
-    TODO_STATUS_NEEDS_ACTION,
     _INSTANCE_STATE_TO_TODO_STATUS,
+    TODO_STATUS_NEEDS_ACTION,
     fc_tag,
     todo_summary_for,
 )
@@ -65,16 +65,19 @@ def _parse_fc_id(summary: str) -> int | None:
         return None
 
 
-def _needs_update(item: TodoItem, expected_summary: str, expected_status: str, expected_due: str | None) -> bool:
+def _needs_update(
+    item: TodoItem,
+    expected_summary: str,
+    expected_status: str,
+    expected_due: str | None,
+) -> bool:
     if item.summary != expected_summary:
         return True
     if item.status != expected_status:
         return True
     # Normalise both to ISO date-only strings for comparison.
     item_due_normalised = item.due.split("T", 1)[0] if isinstance(item.due, str) else None
-    if item_due_normalised != expected_due:
-        return True
-    return False
+    return item_due_normalised != expected_due
 
 
 async def reconcile_once(
@@ -190,16 +193,16 @@ async def _reconcile_one_member(
         }
         for inst in our_by_id.values():
             tag = fc_tag(inst.id)
-            item = by_tag.get(tag)
-            if item is not None:
-                inst.ha_todo_uid = item.uid
+            fresh_item = by_tag.get(tag)
+            if fresh_item is not None:
+                inst.ha_todo_uid = fresh_item.uid
                 # Fix status if needed: add_item always creates needs_action,
                 # so a completed instance needs a status flip.
                 expected_status = _INSTANCE_STATE_TO_TODO_STATUS[inst.state]
                 if expected_status != TODO_STATUS_NEEDS_ACTION:
                     try:
                         await client.todo_update_item(
-                            entity_id, item.uid, status=expected_status
+                            entity_id, fresh_item.uid, status=expected_status
                         )
                     except HAClientError as exc:
                         log.info("post-create status flip failed: %s", exc)

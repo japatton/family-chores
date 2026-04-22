@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Milestone 8 — tests + CI.** Backend now clean under `ruff check` +
+  `mypy --strict` (two targeted ruff ignores for `RUF059`
+  unused-unpacked-variable and `UP042` `(str, Enum)` style). Route
+  handlers all carry proper `_parent: ParentClaim` annotations; fixed
+  real type bugs (int-of-None in recurrence config validation, HA
+  client lifespan param typed as `object`, `create_engine` arg). New
+  frontend test suite: Vitest + happy-dom + @testing-library/react +
+  userEvent; 25 unit tests covering the parent / UI Zustand stores,
+  the `apiFetch` client (JSON + 204 + error-body parsing + bearer
+  header + JSON body serialisation), PinPad digit entry + backspace +
+  disabled, UndoToast render + undo-click, ProgressRing rounding +
+  clamping + aria-label. ESLint flat-config + Prettier-compatible
+  rules. `scripts/lint.sh` runs the full CI stack locally in one
+  command.
+  CI on every PR via `.github/workflows/ci.yml`: parallel backend
+  (ruff/mypy/pytest), frontend (eslint/tsc/vitest/build + artefact
+  upload), and card (typecheck + rollup + artefact upload) jobs.
+  `.github/workflows/release.yml` runs on version tags: multi-arch
+  image build (`linux/amd64`, `linux/arm64`, `linux/arm/v7`) via
+  `docker/setup-qemu-action` + `docker/build-push-action@v6` pushes
+  to GHCR; a fan-in `publish-release` job attaches the Lovelace-card
+  JS to the GitHub release. **243 tests total** (218 backend + 25
+  frontend), all green.
 - **Milestone 7 — SPA polish + Lovelace card.** Completion chime
   synthesised via Web Audio (two-note A5 → C#6 bell, no binary asset),
   gated on the persisted `soundEnabled` flag and a 🔔/🔕 toggle in the

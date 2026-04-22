@@ -11,7 +11,7 @@ def main() -> None:
     options = load_options()
     uvicorn.run(
         "family_chores.app:create_app",
-        host="0.0.0.0",  # noqa: S104 — Ingress-only exposure in prod; dev binds same
+        host="0.0.0.0",
         port=8099,
         factory=True,
         log_level=options.log_level.lower(),

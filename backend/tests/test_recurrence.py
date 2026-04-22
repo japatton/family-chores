@@ -9,7 +9,6 @@ import pytest
 from family_chores.core.recurrence import dates_due
 from family_chores.db.models import RecurrenceType
 
-
 # ─── daily / weekday / weekend ────────────────────────────────────────────
 
 
@@ -44,7 +43,9 @@ def test_specific_days_mwf():
 
 
 def test_specific_days_empty_list_returns_nothing():
-    out = dates_due(RecurrenceType.SPECIFIC_DAYS, {"days": []}, date(2026, 4, 20), date(2026, 4, 26))
+    out = dates_due(
+        RecurrenceType.SPECIFIC_DAYS, {"days": []}, date(2026, 4, 20), date(2026, 4, 26)
+    )
     assert out == []
 
 
@@ -85,11 +86,17 @@ def test_every_n_days_with_future_anchor():
 
 def test_every_n_days_invalid_n_returns_nothing():
     for bad in ({"n": 0, "anchor": "2026-01-01"}, {"n": -1, "anchor": "2026-01-01"}, {}):
-        assert dates_due(RecurrenceType.EVERY_N_DAYS, bad, date(2026, 1, 1), date(2026, 1, 31)) == []
+        assert (
+            dates_due(RecurrenceType.EVERY_N_DAYS, bad, date(2026, 1, 1), date(2026, 1, 31))
+            == []
+        )
 
 
 def test_every_n_days_missing_anchor_returns_nothing():
-    assert dates_due(RecurrenceType.EVERY_N_DAYS, {"n": 2}, date(2026, 1, 1), date(2026, 1, 31)) == []
+    assert (
+        dates_due(RecurrenceType.EVERY_N_DAYS, {"n": 2}, date(2026, 1, 1), date(2026, 1, 31))
+        == []
+    )
 
 
 # ─── monthly_on_date ──────────────────────────────────────────────────────

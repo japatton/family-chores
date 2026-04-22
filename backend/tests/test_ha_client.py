@@ -92,7 +92,12 @@ async def test_todo_get_items_parses_service_response():
                     "todo.alice": {
                         "items": [
                             {"uid": "abc", "summary": "A", "status": "needs_action"},
-                            {"uid": "xyz", "summary": "B", "status": "completed", "due": "2026-05-01"},
+                            {
+                                "uid": "xyz",
+                                "summary": "B",
+                                "status": "completed",
+                                "due": "2026-05-01",
+                            },
                         ]
                     }
                 }
