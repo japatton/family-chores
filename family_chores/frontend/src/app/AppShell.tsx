@@ -2,6 +2,7 @@ import { Link, Outlet, useLocation } from 'react-router-dom'
 import { useInfo } from '../api/hooks'
 import { useWSConnected } from '../ws/provider'
 import { Banner } from '../components/Banner'
+import { DecorativeBackground } from '../components/DecorativeBackground'
 import { SoundToggle } from '../components/SoundToggle'
 
 export function AppShell() {
@@ -16,7 +17,8 @@ export function AppShell() {
       : null
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col relative">
+      <DecorativeBackground />
       <header className="flex items-center justify-between px-6 py-4 sm:px-10 sm:py-6 border-b-2 border-brand-100 sticky top-0 z-10 font-display shadow-pop"
         style={{
           backgroundImage:
@@ -62,7 +64,7 @@ export function AppShell() {
         </div>
       )}
 
-      <main className="flex-1 px-6 sm:px-10 py-6 sm:py-10">
+      <main className="flex-1 px-6 sm:px-10 py-6 sm:py-10 relative z-[1]">
         <Outlet />
       </main>
     </div>

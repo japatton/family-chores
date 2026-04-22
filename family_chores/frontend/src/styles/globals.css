@@ -49,6 +49,40 @@ body {
   }
 }
 
+/* Three drift keyframes shared by the decorative silhouettes in
+ * `DecorativeBackground`. Each shape gets one of these plus its own
+ * duration + delay so the scene never syncs up. */
+@keyframes fc-float-a {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate(14px, -22px) rotate(4deg);
+  }
+}
+@keyframes fc-float-b {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  33% {
+    transform: translate(-18px, -12px) rotate(-5deg);
+  }
+  66% {
+    transform: translate(10px, 14px) rotate(3deg);
+  }
+}
+@keyframes fc-float-c {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translate(8px, -18px) rotate(-6deg) scale(1.04);
+  }
+}
+
 h1,
 h2,
 h3,
@@ -64,7 +98,8 @@ h3,
   .animate-wiggle,
   .animate-sparkle,
   .animate-float-up,
-  .animate-pop-in {
+  .animate-pop-in,
+  [style*='fc-float-'] {
     animation: none !important;
   }
 }
