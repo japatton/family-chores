@@ -38,6 +38,23 @@ See `INSTALL.md` "HA To-do Setup". Once you map a member to their Local
 To-do entity, Family Chores manages items with `[FC#<id>]` prefixes on
 that list; HA surfaces them on its calendar automatically.
 
+## Lovelace card
+
+A lightweight Lit card surfaces each member's points, streak, and progress
+on any HA dashboard. The card reads HA entities only — it never talks to
+the add-on's HTTP API. Build and install instructions live in
+[`lovelace-card/README.md`](lovelace-card/README.md).
+
+In short:
+```sh
+cd lovelace-card && npm install && npm run build
+```
+then copy `dist/family-chores-card.js` to `/config/www/` and register it
+under **Settings → Dashboards → Resources** with URL
+`/local/family-chores-card.js` and type `JavaScript Module`. Add the card
+via the **+ Add Card** picker — it appears as "Family Chores" with a GUI
+editor.
+
 ## Events fired
 
 | Event | Payload |

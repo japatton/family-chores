@@ -23,11 +23,33 @@ body,
 
 body {
   font-family: 'Nunito', system-ui, -apple-system, sans-serif;
-  background: #faf8ff;
   color: #1e1b4b;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: contain;
+
+  /* Slow background-position shift reduces static-pixel burn-in on OLED
+   * wall-mounted displays. 90-second cycle — unnoticeable while looking,
+   * does the job in peripheral vision. */
+  background: linear-gradient(135deg, #faf8ff 0%, #eef2ff 50%, #faf8ff 100%);
+  background-size: 300% 300%;
+  animation: fc-bg-shift 90s ease-in-out infinite;
+}
+
+@keyframes fc-bg-shift {
+  0%,
+  100% {
+    background-position: 0% 0%;
+  }
+  50% {
+    background-position: 100% 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body {
+    animation: none;
+  }
 }
 
 /* Disable text selection on interactive surfaces (kid tablet). */

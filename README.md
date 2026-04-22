@@ -75,7 +75,9 @@ See [`DECISIONS.md`](DECISIONS.md) §7 for architectural hook points for each.
 
 - [ ] `icon.png` — solid-color placeholder
 - [ ] `logo.png` — solid-color placeholder
-- [ ] `backend/src/family_chores/assets/chime.ogg` — completion chime (when added)
+
+The completion chime is synthesised via Web Audio (two-note bell, A5 →
+C#6), so no audio binary ships with the add-on.
 
 ## Development
 

@@ -2,6 +2,7 @@ import { Link, Outlet, useLocation } from 'react-router-dom'
 import { useInfo } from '../api/hooks'
 import { useWSConnected } from '../ws/provider'
 import { Banner } from '../components/Banner'
+import { SoundToggle } from '../components/SoundToggle'
 
 export function AppShell() {
   const info = useInfo()
@@ -30,6 +31,7 @@ export function AppShell() {
               reconnecting…
             </span>
           )}
+          <SoundToggle />
           <Link
             to="/parent"
             className={
