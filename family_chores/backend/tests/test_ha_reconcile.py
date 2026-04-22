@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 import pytest
-from backend.tests._ha_fakes import FakeHAClient
 
 from family_chores.db.models import (
     Chore,
@@ -15,6 +14,7 @@ from family_chores.db.models import (
     RecurrenceType,
 )
 from family_chores.ha.reconcile import reconcile_once
+from tests._ha_fakes import FakeHAClient
 
 
 async def _seed_member_with_instances(

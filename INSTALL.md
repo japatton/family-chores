@@ -3,7 +3,8 @@
 ## Option A — custom add-on repository (recommended)
 
 1. In HA, go to **Settings → Add-ons → Add-on Store**.
-2. Menu (⋮) → **Repositories** → paste the repo URL and click **Add**.
+2. Menu (⋮) → **Repositories** → paste
+   `https://github.com/japatton/family-chores` and click **Add**.
 3. Refresh the store, find **Family Chores**, click **Install**.
 4. When it finishes installing, click **Start**. Give it 10–20 seconds to come up.
 5. Open the sidebar panel **Family Chores**, or click **Open Web UI** from the
@@ -15,8 +16,9 @@ Useful when you're iterating on the add-on itself from the HA host.
 
 1. Mount the HA host's `/addons` directory via Samba, SSH, or the
    SSH & Web Terminal add-on.
-2. Copy this repository into `/addons/family_chores/` so that
-   `/addons/family_chores/config.yaml` exists.
+2. Copy the contents of this repo's `family_chores/` subdirectory into
+   `/addons/family_chores/` so that `/addons/family_chores/config.yaml`
+   exists on the host.
 3. In HA, **Settings → Add-ons → Add-on Store → menu (⋮) → Check for updates**.
    "Local add-ons" now includes Family Chores.
 4. Click **Install**, then **Start**.
@@ -76,27 +78,43 @@ the add-on log, check that the manifest still grants `hassio_api: true`,
 
 ## Local development (no HA required)
 
-You can run the backend + frontend on your laptop without a real HA instance.
-A small Supervisor stub lets the add-on boot as if HA were there.
+You can run the backend + frontend on your laptop without a real HA
+instance. When neither `SUPERVISOR_TOKEN` nor `HA_URL`+`HA_TOKEN` is set
+the bridge falls back to a `NoOpBridge` — the app works end-to-end, it
+just doesn't publish mirror state to HA.
+
+From the repo root:
 
 ```
-# Backend
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -e '.[dev]'
-python -m family_chores               # boots on http://localhost:8099
+# One-time setup: Python venv + backend editable install
+python3 -m venv .venv
+.venv/bin/pip install -e 'family_chores/backend/[dev]'
 
-# Frontend (separate terminal, once milestone 6 lands)
-cd frontend
-npm ci
-npm run dev                            # Vite dev server on http://localhost:5173,
-                                       # proxies /api to the backend
+# Terminal 1 — backend on http://localhost:8099
+./scripts/dev_backend.sh
+
+# Terminal 2 — Vite dev server on http://localhost:5173 (proxies /api → :8099)
+./scripts/dev_frontend.sh
 ```
 
-For the full end-to-end dev loop, see `scripts/dev_backend.sh` and
-`scripts/dev_frontend.sh` (added in later milestones). A
-`docker-compose.yml` is also provided for running the backend + frontend
-together in containers without HA.
+Running `./scripts/lint.sh` from the repo root runs the same ruff +
+mypy + pytest + eslint + tsc + vitest suite as CI.
+
+## Repo layout
+
+```
+/                  # custom add-on repository (what you point HA at)
+├── repository.yaml         # metadata; marks this as an HA repo
+├── family_chores/          # THE ADD-ON (what Supervisor builds)
+│   ├── config.yaml
+│   ├── Dockerfile
+│   ├── build.yaml
+│   ├── backend/            # FastAPI + SQLAlchemy
+│   └── frontend/           # React SPA
+├── lovelace-card/          # separate Lit card (not part of the image)
+├── scripts/                # dev + lint scripts
+└── .github/workflows/      # CI + release pipelines
+```
 
 ## Updating
 

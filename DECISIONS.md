@@ -14,9 +14,43 @@ Living design notes. New entries go at the top of each section; significant chan
 
 ---
 
-## 1. File tree (confirmed, one deviation)
+## 1. File tree (see §5 for restructure notes)
 
-Working directory is `/Users/jasonpatton/ToDoChore/`. The prompt shows `family-chores/` as the tree root — since the user already set up `ToDoChore/` as the project directory, we treat **that** as root and collapse the `family-chores/` level. The add-on's `slug` is still `family_chores` per §9 of the spec.
+**Current layout (post-milestone-8 restructure — see §5):** the repo root
+is an **HA add-on repository**, and the add-on itself lives in
+`family_chores/`. HA Supervisor requires this shape (`repository.yaml` +
+subdir per add-on) to accept the repo URL.
+
+```
+/                                # the add-on *repository*
+├── repository.yaml              # metadata — marks this as an HA repo
+├── README.md, LICENSE, DECISIONS.md, PROMPT.md, INSTALL.md
+├── .github/workflows/           # CI + release pipelines
+├── scripts/                     # dev / lint / probe scripts
+├── lovelace-card/               # separate Lit card (not in the image)
+└── family_chores/               # THE ADD-ON (what Supervisor builds)
+    ├── config.yaml              # add-on manifest
+    ├── Dockerfile
+    ├── build.yaml
+    ├── run.sh
+    ├── icon.png, logo.png
+    ├── DOCS.md                  # shown on Documentation tab
+    ├── CHANGELOG.md             # shown on Changelog link
+    ├── backend/                 # FastAPI + SQLAlchemy + Alembic
+    └── frontend/                # React SPA
+```
+
+**Prompt-tree deviations** (logged in full in §5):
+- Collapsed the prompt's outer `family-chores/` wrapper: the repo root
+  IS `ToDoChore`, not a nested directory.
+- `config.yaml` and all build files live inside `family_chores/`
+  (required by HA Supervisor; see §5 milestone-8 entry).
+- Added `services/` beside `core/` for DB-orchestrating code.
+- Added `ha_todo_entity_id` column + `timezone` option.
+
+The illustrative prompt subtree below is kept for reference — actual
+files within `family_chores/backend/` and `family_chores/frontend/`
+match this structure:
 
 ```
 ToDoChore/
@@ -319,6 +353,7 @@ SQLite is the only source of truth. HA entities are a one-way mirror. Business l
 - **2026-04-21 — added `timezone` option to `config.yaml`.** Not in the prompt's manifest snippet; needed so the scheduler has a sensible tz before milestone 5's HA tz fetching lands. Optional string (`str?`); empty = fall back to UTC.
 - **2026-04-21 — replaced `todo.family_chores_<slug>` with user-managed Local To-do entities.** Rooted in the add-on-vs-integration constraint (see §4 #45). User-facing impact documented in INSTALL.md. Changes `member.ha_todo_entity_id` nullable string to the schema.
 - **2026-04-21 — revised design target for the SPA.** Prompt §1 said "wall-mounted tablet, landscape, ~10" @ 1280×800." Actual target is a **32" portrait touchscreen @ 2160×3840**, still wall-mounted. Must also be usable on phones and other devices. Shift from "tablet-landscape-first" to **mobile-first responsive** with the large-portrait mode as the design anchor. 72 px min tap targets retained; no hover affordances (confirmed touch-only). Fluid type via `clamp()` so typography scales with viewport rather than jumping at breakpoints. Today view grid: 1 col (phone) → 2 col (tablet / 32" portrait). No impact on milestones 1–5 — backend is viewport-agnostic.
+- **2026-04-22 — restructured into an HA add-on *repository* layout.** Initial push to GitHub had `config.yaml` at the repo root, which HA Supervisor rejects with "not a valid app repository." Supervisor expects `repository.yaml` at root + one subdirectory per add-on. Moved all add-on files (`config.yaml`, `Dockerfile`, `build.yaml`, `run.sh`, `icon.png`, `logo.png`, `DOCS.md`, `CHANGELOG.md`, `backend/`, `frontend/`, `.dockerignore`) under `family_chores/`. Added `repository.yaml` at root. `lovelace-card/` stays at root (separate artefact). Scripts and CI workflows updated with the new paths; three test files had `from backend.tests._ha_fakes` imports that relied on the pre-move layout — switched to `from tests._ha_fakes` which works via pytest's rootdir/sys.path handling. All 243 tests still pass after the move.
 
 ---
 

@@ -9,27 +9,27 @@ ROOT="$(pwd)"
 VENV_PY="${ROOT}/.venv/bin/python"
 if [ ! -x "${VENV_PY}" ]; then
     echo "No .venv found. Create one with:"
-    echo "  python3 -m venv .venv && .venv/bin/pip install -e 'backend/[dev]'"
+    echo "  python3 -m venv .venv && .venv/bin/pip install -e 'family_chores/backend/[dev]'"
     exit 1
 fi
 
 echo "── backend ruff ──"
-"${ROOT}/.venv/bin/ruff" check backend/
+"${ROOT}/.venv/bin/ruff" check family_chores/backend/
 
 echo "── backend mypy --strict ──"
-"${ROOT}/.venv/bin/mypy" backend/src --strict
+"${ROOT}/.venv/bin/mypy" family_chores/backend/src --strict
 
 echo "── backend pytest ──"
-"${VENV_PY}" -m pytest backend/tests/ -q
+"${VENV_PY}" -m pytest family_chores/backend/tests/ -q
 
 echo "── frontend eslint ──"
-(cd frontend && npm run lint)
+(cd family_chores/frontend && npm run lint)
 
 echo "── frontend typecheck ──"
-(cd frontend && npm run typecheck)
+(cd family_chores/frontend && npm run typecheck)
 
 echo "── frontend vitest ──"
-(cd frontend && npm test)
+(cd family_chores/frontend && npm test)
 
 echo "── card typecheck ──"
 (cd lovelace-card && npm run typecheck)
