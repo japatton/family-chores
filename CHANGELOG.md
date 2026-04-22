@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Milestone 6 — SPA skeleton.** React 18 + TypeScript + Vite + Tailwind
+  CSS + TanStack Query + Zustand + React Router, all wired to the existing
+  HTTP + WebSocket API. Three main views (Today, Member, Parent) with
+  parent routes split into Approvals / Members / Chores / Activity tabs,
+  each gated by a PIN flow (first-run set-and-confirm vs verify; sliding
+  refresh on user activity via `/api/auth/refresh`). Per-member theming
+  via a single `--accent` CSS variable fed from `member.color`. One-tap
+  chore completion with a 4-second undo toast; "⏳ Waiting for parent"
+  state for approval members. Fluid typography via `clamp()`-based
+  Tailwind tokens so a single build scales from phones to the 32"
+  portrait target; 72 px minimum tap targets throughout. WebSocket
+  auto-reconnects with exponential backoff and invalidates the relevant
+  TanStack Query keys on each event. App shell shows a "reconnecting…"
+  pill when the WS drops and banners when HA is disconnected or the DB
+  bootstrap restored from backup. Dockerfile gained a `frontend-build`
+  stage on Node 22 that compiles the SPA into
+  `backend/src/family_chores/static/`; that directory is git-ignored
+  except `.gitkeep` so built artefacts don't pollute diffs. FastAPI's
+  static-mount check now keys on `index.html` rather than "dir non-empty"
+  so the `.gitkeep` doesn't trip false mounting. Dev scripts added:
+  `scripts/dev_backend.sh`, `scripts/dev_frontend.sh`, `scripts/lint.sh`.
 - **Milestone 5 — Home Assistant bridge.** Full one-way mirror of SQLite
   state into HA entities. `family_chores.ha.client` is an async httpx
   wrapper that auto-picks `SUPERVISOR_TOKEN` (add-on runtime) or
