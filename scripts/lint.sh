@@ -1,6 +1,11 @@
 #!/bin/sh
 # Run the full local lint / test suite. Mirrors `.github/workflows/ci.yml`
 # so a clean `scripts/lint.sh` means green CI.
+#
+# Each Python tool is invoked with cwd=family_chores/backend so it picks
+# up the [tool.mypy] / [tool.ruff] blocks in pyproject.toml. Running
+# `mypy family_chores/backend/src` from the repo root silently ignores
+# the config because mypy's discovery looks in cwd.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -14,13 +19,13 @@ if [ ! -x "${VENV_PY}" ]; then
 fi
 
 echo "── backend ruff ──"
-"${ROOT}/.venv/bin/ruff" check family_chores/backend/
+(cd family_chores/backend && "${ROOT}/.venv/bin/ruff" check .)
 
 echo "── backend mypy --strict ──"
-"${ROOT}/.venv/bin/mypy" family_chores/backend/src --strict
+(cd family_chores/backend && "${ROOT}/.venv/bin/mypy" src --strict)
 
 echo "── backend pytest ──"
-"${VENV_PY}" -m pytest family_chores/backend/tests/ -q
+(cd family_chores/backend && "${VENV_PY}" -m pytest tests/ -q)
 
 echo "── frontend eslint ──"
 (cd family_chores/frontend && npm run lint)
