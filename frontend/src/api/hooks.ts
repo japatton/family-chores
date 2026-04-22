@@ -1,0 +1,324 @@
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
+import { apiFetch } from './client'
+import type {
+  ActivityPage,
+  Chore,
+  ChoreCreate,
+  InfoResponse,
+  Instance,
+  Member,
+  MemberCreate,
+  MemberStats,
+  MemberUpdate,
+  TodayView,
+  TokenResponse,
+  WhoAmI,
+} from './types'
+import { useParentStore } from '../store/parent'
+
+// ─── read hooks ────────────────────────────────────────────────────────────
+
+export function useInfo() {
+  return useQuery({
+    queryKey: ['info'],
+    queryFn: () => apiFetch<InfoResponse>('/info'),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
+}
+
+export function useWhoami() {
+  return useQuery({
+    queryKey: ['whoami'],
+    queryFn: () => apiFetch<WhoAmI>('/auth/whoami'),
+    staleTime: 5_000,
+  })
+}
+
+export function useToday() {
+  return useQuery({
+    queryKey: ['today'],
+    queryFn: () => apiFetch<TodayView>('/today'),
+    staleTime: 5_000,
+  })
+}
+
+export function useMembers() {
+  return useQuery({
+    queryKey: ['members'],
+    queryFn: () => apiFetch<Member[]>('/members'),
+  })
+}
+
+export function useMember(slug: string | undefined) {
+  return useQuery({
+    queryKey: ['member', slug],
+    queryFn: () => apiFetch<Member>(`/members/${slug}`),
+    enabled: !!slug,
+  })
+}
+
+export function useChores() {
+  return useQuery({
+    queryKey: ['chores'],
+    queryFn: () => apiFetch<Chore[]>('/chores'),
+  })
+}
+
+export function usePendingApprovals() {
+  return useQuery({
+    queryKey: ['instances', 'pending_approvals'],
+    queryFn: () =>
+      apiFetch<Instance[]>('/instances?state=done_unapproved&limit=200'),
+    staleTime: 5_000,
+  })
+}
+
+export function useActivityLog(limit = 50, offset = 0) {
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useQuery({
+    queryKey: ['activity', limit, offset],
+    queryFn: () =>
+      apiFetch<ActivityPage>(
+        `/admin/activity?limit=${limit}&offset=${offset}`,
+        { parentToken: token },
+      ),
+    enabled: !!token,
+  })
+}
+
+// ─── kid-facing mutations (no parent token) ───────────────────────────────
+
+function invalidateOnInstanceChange(qc: ReturnType<typeof useQueryClient>) {
+  return () => {
+    qc.invalidateQueries({ queryKey: ['today'] })
+    qc.invalidateQueries({ queryKey: ['instances'] })
+    qc.invalidateQueries({ queryKey: ['members'] })
+    qc.invalidateQueries({ queryKey: ['member'] })
+  }
+}
+
+export function useCompleteInstance() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) =>
+      apiFetch<Instance>(`/instances/${id}/complete`, { method: 'POST' }),
+    onSuccess: invalidateOnInstanceChange(qc),
+  })
+}
+
+export function useUndoInstance() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) =>
+      apiFetch<Instance>(`/instances/${id}/undo`, { method: 'POST' }),
+    onSuccess: invalidateOnInstanceChange(qc),
+  })
+}
+
+// ─── parent-token mutations ────────────────────────────────────────────────
+
+export function useSetPin() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { pin: string; current_pin?: string }) =>
+      apiFetch<WhoAmI>('/auth/pin/set', { method: 'POST', json: body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['whoami'] }),
+  })
+}
+
+export function useVerifyPin() {
+  const qc = useQueryClient()
+  const setToken = useParentStore((s) => s.setToken)
+  return useMutation({
+    mutationFn: (pin: string) =>
+      apiFetch<TokenResponse>('/auth/pin/verify', {
+        method: 'POST',
+        json: { pin },
+      }),
+    onSuccess: (data) => {
+      setToken(data.token, data.expires_at)
+      qc.invalidateQueries({ queryKey: ['whoami'] })
+    },
+  })
+}
+
+export function useRefreshParent() {
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  const setToken = useParentStore((s) => s.setToken)
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<TokenResponse>('/auth/refresh', {
+        method: 'POST',
+        parentToken: token,
+      }),
+    onSuccess: (data) => setToken(data.token, data.expires_at),
+  })
+}
+
+export function useCreateMember() {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: (body: MemberCreate) =>
+      apiFetch<Member>('/members', {
+        method: 'POST',
+        parentToken: token,
+        json: body,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['members'] })
+      qc.invalidateQueries({ queryKey: ['today'] })
+    },
+  })
+}
+
+export function useUpdateMember(slug: string) {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: (body: MemberUpdate) =>
+      apiFetch<Member>(`/members/${slug}`, {
+        method: 'PATCH',
+        parentToken: token,
+        json: body,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['members'] })
+      qc.invalidateQueries({ queryKey: ['member', slug] })
+      qc.invalidateQueries({ queryKey: ['today'] })
+    },
+  })
+}
+
+export function useDeleteMember() {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: (slug: string) =>
+      apiFetch<void>(`/members/${slug}`, {
+        method: 'DELETE',
+        parentToken: token,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['members'] })
+      qc.invalidateQueries({ queryKey: ['today'] })
+    },
+  })
+}
+
+export function useCreateChore() {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: (body: ChoreCreate) =>
+      apiFetch<Chore>('/chores', {
+        method: 'POST',
+        parentToken: token,
+        json: body,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['chores'] })
+      qc.invalidateQueries({ queryKey: ['today'] })
+    },
+  })
+}
+
+export function useDeleteChore() {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: (id: number) =>
+      apiFetch<void>(`/chores/${id}`, {
+        method: 'DELETE',
+        parentToken: token,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['chores'] })
+      qc.invalidateQueries({ queryKey: ['today'] })
+    },
+  })
+}
+
+export function useApproveInstance() {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: (id: number) =>
+      apiFetch<Instance>(`/instances/${id}/approve`, {
+        method: 'POST',
+        parentToken: token,
+      }),
+    onSuccess: invalidateOnInstanceChange(qc),
+  })
+}
+
+export function useRejectInstance() {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: number; reason?: string }) =>
+      apiFetch<Instance>(`/instances/${id}/reject`, {
+        method: 'POST',
+        parentToken: token,
+        json: { reason },
+      }),
+    onSuccess: invalidateOnInstanceChange(qc),
+  })
+}
+
+export function useSkipInstance() {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: number; reason?: string }) =>
+      apiFetch<Instance>(`/instances/${id}/skip`, {
+        method: 'POST',
+        parentToken: token,
+        json: { reason },
+      }),
+    onSuccess: invalidateOnInstanceChange(qc),
+  })
+}
+
+export function useAdjustPoints() {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: ({
+      memberId,
+      delta,
+      reason,
+    }: {
+      memberId: number
+      delta: number
+      reason?: string
+    }) =>
+      apiFetch<MemberStats>(`/members/${memberId}/points/adjust`, {
+        method: 'POST',
+        parentToken: token,
+        json: { delta, reason },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['members'] })
+      qc.invalidateQueries({ queryKey: ['today'] })
+    },
+  })
+}
+
+export function useRebuildStats() {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<{ members_updated: number }>('/admin/rebuild-stats', {
+        method: 'POST',
+        parentToken: token,
+      }),
+    onSuccess: () => qc.invalidateQueries(),
+  })
+}

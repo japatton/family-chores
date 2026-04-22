@@ -1,0 +1,311 @@
+import { useState } from 'react'
+import { APIError } from '../../api/client'
+import { useChores, useCreateChore, useDeleteChore, useMembers } from '../../api/hooks'
+import type { ChoreCreate, RecurrenceType } from '../../api/types'
+
+const RECURRENCE_OPTIONS: { value: RecurrenceType; label: string }[] = [
+  { value: 'daily', label: 'Every day' },
+  { value: 'weekdays', label: 'Weekdays' },
+  { value: 'weekends', label: 'Weekends' },
+  { value: 'specific_days', label: 'Specific days' },
+  { value: 'every_n_days', label: 'Every N days' },
+  { value: 'monthly_on_date', label: 'Monthly on date' },
+  { value: 'once', label: 'Once' },
+]
+
+const WEEKDAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+export function ChoresTab() {
+  const chores = useChores()
+  const members = useMembers()
+  const create = useCreateChore()
+  const del = useDeleteChore()
+
+  const [draft, setDraft] = useState<ChoreCreate>({
+    name: '',
+    points: 5,
+    recurrence_type: 'daily',
+    recurrence_config: {},
+    assigned_member_ids: [],
+    active: true,
+  })
+  const [specificDays, setSpecificDays] = useState<number[]>([])
+  const [everyN, setEveryN] = useState('2')
+  const [everyAnchor, setEveryAnchor] = useState(
+    new Date().toISOString().slice(0, 10),
+  )
+  const [monthDay, setMonthDay] = useState('15')
+  const [onceDate, setOnceDate] = useState(
+    new Date().toISOString().slice(0, 10),
+  )
+  const [error, setError] = useState<string | null>(null)
+
+  if (chores.isLoading || members.isLoading) {
+    return <p className="text-brand-700">Loading…</p>
+  }
+
+  const buildRecurrenceConfig = (): Record<string, unknown> => {
+    switch (draft.recurrence_type) {
+      case 'specific_days':
+        return { days: specificDays }
+      case 'every_n_days':
+        return { n: Number.parseInt(everyN, 10) || 1, anchor: everyAnchor }
+      case 'monthly_on_date':
+        return { day: Number.parseInt(monthDay, 10) || 1 }
+      case 'once':
+        return { date: onceDate }
+      default:
+        return {}
+    }
+  }
+
+  const submit = () => {
+    setError(null)
+    if (!draft.name.trim()) {
+      setError('Name is required.')
+      return
+    }
+    const body: ChoreCreate = {
+      ...draft,
+      recurrence_config: buildRecurrenceConfig(),
+    }
+    create.mutate(body, {
+      onSuccess: () => {
+        setDraft({
+          name: '',
+          points: 5,
+          recurrence_type: 'daily',
+          recurrence_config: {},
+          assigned_member_ids: [],
+          active: true,
+        })
+        setSpecificDays([])
+      },
+      onError: (e) => {
+        if (e instanceof APIError) setError(e.detail)
+      },
+    })
+  }
+
+  return (
+    <div className="space-y-6">
+      <ul className="space-y-3">
+        {(chores.data ?? []).map((c) => {
+          const assigned = (members.data ?? []).filter((m) =>
+            c.assigned_member_ids.includes(m.id),
+          )
+          return (
+            <li
+              key={c.id}
+              className="rounded-xl4 bg-white p-5 shadow-card flex items-center gap-4 flex-wrap"
+            >
+              <span className="text-fluid-xl" aria-hidden>
+                {c.icon ?? '✨'}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-fluid-lg font-black truncate">{c.name}</div>
+                <div className="text-fluid-xs font-semibold text-brand-700/80">
+                  {c.points} pt · {c.recurrence_type} ·{' '}
+                  {assigned.length > 0
+                    ? assigned.map((m) => m.name).join(', ')
+                    : 'nobody assigned'}
+                  {!c.active && ' · inactive'}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`Delete "${c.name}"?`)) {
+                    del.mutate(c.id)
+                  }
+                }}
+                className="min-h-touch px-4 rounded-2xl font-bold text-fluid-sm bg-rose-50 text-rose-700"
+              >
+                Delete
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+
+      <div className="rounded-xl4 bg-white p-5 shadow-card space-y-3">
+        <div className="text-fluid-base font-black text-brand-900">Add a chore</div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-fluid-xs font-bold text-brand-700">Name</span>
+            <input
+              className="rounded-xl border border-brand-100 px-4 py-3 text-fluid-base"
+              value={draft.name}
+              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-fluid-xs font-bold text-brand-700">Icon (emoji)</span>
+            <input
+              className="rounded-xl border border-brand-100 px-4 py-3 text-fluid-base"
+              value={draft.icon ?? ''}
+              onChange={(e) => setDraft({ ...draft, icon: e.target.value || null })}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-fluid-xs font-bold text-brand-700">Points</span>
+            <input
+              type="number"
+              min={0}
+              className="rounded-xl border border-brand-100 px-4 py-3 text-fluid-base"
+              value={draft.points ?? 0}
+              onChange={(e) =>
+                setDraft({ ...draft, points: Number.parseInt(e.target.value, 10) || 0 })
+              }
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-fluid-xs font-bold text-brand-700">Recurrence</span>
+            <select
+              value={draft.recurrence_type}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  recurrence_type: e.target.value as RecurrenceType,
+                })
+              }
+              className="rounded-xl border border-brand-100 px-4 py-3 text-fluid-base"
+            >
+              {RECURRENCE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {draft.recurrence_type === 'specific_days' && (
+          <div className="flex gap-2 flex-wrap">
+            {WEEKDAY_NAMES.map((wd, idx) => {
+              const iso = idx + 1
+              const on = specificDays.includes(iso)
+              return (
+                <button
+                  key={wd}
+                  type="button"
+                  onClick={() =>
+                    setSpecificDays((days) =>
+                      on ? days.filter((d) => d !== iso) : [...days, iso],
+                    )
+                  }
+                  className={
+                    'min-h-touch px-4 rounded-2xl font-bold text-fluid-sm ' +
+                    (on
+                      ? 'bg-brand-600 text-white'
+                      : 'bg-brand-50 text-brand-700')
+                  }
+                >
+                  {wd}
+                </button>
+              )
+            })}
+          </div>
+        )}
+        {draft.recurrence_type === 'every_n_days' && (
+          <div className="flex gap-3 flex-wrap items-end">
+            <label className="flex flex-col gap-1">
+              <span className="text-fluid-xs font-bold text-brand-700">N</span>
+              <input
+                type="number"
+                min={1}
+                className="rounded-xl border border-brand-100 px-3 py-2 w-20 text-fluid-base"
+                value={everyN}
+                onChange={(e) => setEveryN(e.target.value)}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-fluid-xs font-bold text-brand-700">Anchor</span>
+              <input
+                type="date"
+                className="rounded-xl border border-brand-100 px-3 py-2 text-fluid-base"
+                value={everyAnchor}
+                onChange={(e) => setEveryAnchor(e.target.value)}
+              />
+            </label>
+          </div>
+        )}
+        {draft.recurrence_type === 'monthly_on_date' && (
+          <label className="flex flex-col gap-1 max-w-[10rem]">
+            <span className="text-fluid-xs font-bold text-brand-700">Day (1-31)</span>
+            <input
+              type="number"
+              min={1}
+              max={31}
+              className="rounded-xl border border-brand-100 px-3 py-2 text-fluid-base"
+              value={monthDay}
+              onChange={(e) => setMonthDay(e.target.value)}
+            />
+          </label>
+        )}
+        {draft.recurrence_type === 'once' && (
+          <label className="flex flex-col gap-1 max-w-xs">
+            <span className="text-fluid-xs font-bold text-brand-700">Date</span>
+            <input
+              type="date"
+              className="rounded-xl border border-brand-100 px-3 py-2 text-fluid-base"
+              value={onceDate}
+              onChange={(e) => setOnceDate(e.target.value)}
+            />
+          </label>
+        )}
+
+        <div>
+          <div className="text-fluid-xs font-bold text-brand-700 mb-1">Assign to</div>
+          <div className="flex flex-wrap gap-2">
+            {(members.data ?? []).map((m) => {
+              const on = (draft.assigned_member_ids ?? []).includes(m.id)
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() =>
+                    setDraft({
+                      ...draft,
+                      assigned_member_ids: on
+                        ? (draft.assigned_member_ids ?? []).filter((x) => x !== m.id)
+                        : [...(draft.assigned_member_ids ?? []), m.id],
+                    })
+                  }
+                  className={
+                    'min-h-touch px-4 rounded-2xl font-bold text-fluid-sm ' +
+                    (on
+                      ? 'text-white'
+                      : 'bg-brand-50 text-brand-700 border border-brand-100')
+                  }
+                  style={on ? { backgroundColor: m.color } : undefined}
+                >
+                  {m.avatar ?? '🧒'} {m.name}
+                </button>
+              )
+            })}
+            {(members.data ?? []).length === 0 && (
+              <span className="text-fluid-sm text-brand-700/70">
+                No members yet — add one first.
+              </span>
+            )}
+          </div>
+        </div>
+
+        {error && (
+          <div role="alert" className="text-rose-600 text-fluid-sm font-semibold">
+            {error}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={submit}
+          disabled={create.isPending}
+          className="min-h-touch px-6 rounded-2xl bg-brand-600 text-white font-black text-fluid-base disabled:opacity-50"
+        >
+          {create.isPending ? 'Saving…' : 'Add chore'}
+        </button>
+      </div>
+    </div>
+  )
+}

@@ -272,7 +272,7 @@ def create_app(options: Options | None = None) -> FastAPI:
     app.include_router(admin.router)
     app.include_router(ws.router)
 
-    if STATIC_DIR.is_dir() and any(STATIC_DIR.iterdir()):
+    if (STATIC_DIR / "index.html").exists():
         app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
     else:
         @app.get("/", response_class=HTMLResponse)
@@ -280,7 +280,9 @@ def create_app(options: Options | None = None) -> FastAPI:
             return (
                 "<!DOCTYPE html><html><body style='font-family:system-ui;padding:2rem'>"
                 "<h1>Family Chores</h1>"
-                "<p>Backend is running. Static assets not yet built — see milestone 6.</p>"
+                "<p>Backend is running. SPA not built — run "
+                "<code>cd frontend &amp;&amp; npm run build</code> (or let the "
+                "Docker build do it for you).</p>"
                 "<p>Try <code>GET /api/health</code>.</p>"
                 "</body></html>"
             )

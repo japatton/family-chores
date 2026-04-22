@@ -270,6 +270,20 @@ SQLite is the only source of truth. HA entities are a one-way mirror. Business l
 
 46. **Startup reconcile blocks briefly; periodic reconcile catches anything the bridge dropped.** Lifespan awaits `reconcile_once` before accepting requests so a restart after HA downtime converges state before the first API call. The 15-min scheduled job is the safety net for mid-run bridge failures.
 
+47. **Frontend uses `HashRouter`.** The add-on is served at a variable Ingress path (`/hassio/ingress/local_family_chores/`). Vite emits relative asset URLs (`base: './'`) so all CSS/JS loads correctly, and `HashRouter` sidesteps the basename-threading problem for in-app routes. URLs look like `/#/member/alice`, which is fine under an Ingress panel (users don't deep-link into an iframe).
+
+48. **SPA build output is gitignored.** `backend/src/family_chores/static/*` is ignored except for `.gitkeep`. The Dockerfile has a dedicated `frontend-build` stage that runs `npm ci && npm run build` into `backend/src/family_chores/static/`; the final image `COPY --from=frontend-build` pulls it in. No minified JS noise in git diffs, and the final image always bakes a fresh SPA.
+
+49. **FastAPI's static-mount gate keys on `index.html`, not "dir is non-empty".** The `.gitkeep` would falsely trip the old "dir has any file" check, so we'd mount `StaticFiles` and return 404 for `/`. Keying on `index.html` correctly falls through to the fallback HTML (with a "run `npm run build`" hint) when the SPA hasn't been built.
+
+50. **Fluid typography via Tailwind custom font-size tokens (`fluid-xs`…`fluid-3xl`).** Each token is a `clamp()` formula on viewport width, so type scales smoothly between phone and 32" portrait without discrete breakpoints. Paired with `min-h-touch = 4.5rem` (72 px) on every interactive surface.
+
+51. **Per-member theming via a single CSS variable.** Components set `style={{ '--accent': member.color }}`; `.themed` and `.themed-soft` utility classes use `color-mix()` to derive backgrounds. Zero runtime theme engine, no CSS-in-JS — a variable + gradient.
+
+52. **TanStack Query is the only data-cache.** Zustand holds transient / localStorage-persisted bits (parent token + expiry, sound-enabled). Routers call `queryClient.invalidateQueries` from the WS event handler, so any mutation made in another tab (or by the HA bridge) re-syncs without a manual refresh.
+
+53. **Parent token + sliding refresh on the client.** `useParentStore` keeps `{token, expiresAt, lastActivity}`; `isActive()` gates the gate. Client can call `/api/auth/refresh` on activity to renew — matches the spec's 5-min-inactivity semantic without server-side session state.
+
 ---
 
 ## 5. Deviations from prompt
@@ -280,6 +294,7 @@ SQLite is the only source of truth. HA entities are a one-way mirror. Business l
 - **2026-04-21 — added `services/` directory alongside `core/`.** The prompt's file tree lists `core/` for "pure domain logic" but routes DB-backed orchestration (mark overdue, generate instances, recompute stats) through the scheduler. Putting async-session-using code under `services/` keeps `core/` genuinely pure (no SQLAlchemy imports) and makes unit tests easy. Prompt tree was illustrative; no conflict with §10.
 - **2026-04-21 — added `timezone` option to `config.yaml`.** Not in the prompt's manifest snippet; needed so the scheduler has a sensible tz before milestone 5's HA tz fetching lands. Optional string (`str?`); empty = fall back to UTC.
 - **2026-04-21 — replaced `todo.family_chores_<slug>` with user-managed Local To-do entities.** Rooted in the add-on-vs-integration constraint (see §4 #45). User-facing impact documented in INSTALL.md. Changes `member.ha_todo_entity_id` nullable string to the schema.
+- **2026-04-21 — revised design target for the SPA.** Prompt §1 said "wall-mounted tablet, landscape, ~10" @ 1280×800." Actual target is a **32" portrait touchscreen @ 2160×3840**, still wall-mounted. Must also be usable on phones and other devices. Shift from "tablet-landscape-first" to **mobile-first responsive** with the large-portrait mode as the design anchor. 72 px min tap targets retained; no hover affordances (confirmed touch-only). Fluid type via `clamp()` so typography scales with viewport rather than jumping at breakpoints. Today view grid: 1 col (phone) → 2 col (tablet / 32" portrait). No impact on milestones 1–5 — backend is viewport-agnostic.
 
 ---
 
@@ -377,8 +392,8 @@ These are explicitly out of scope for v1, but we leave the architecture unbent s
 2. ☑ DB + models + Alembic — commit `9c2aea4`
 3. ☑ Recurrence + instance generation + scheduler — commit `5d124dc`
 4. ☑ API + auth — commit `863abde`
-5. ☑ HA bridge — this milestone
-6. ☐ SPA skeleton
+5. ☑ HA bridge — commit `f45d443`
+6. ☑ SPA skeleton — this milestone
 7. ☐ SPA polish + card
 8. ☐ Tests + CI
 
@@ -393,4 +408,5 @@ Stop and summarize for the human after each.
 - **2026-04-21** — Milestone 2 complete. Added §4 entries #21–#28 covering DB conventions, PRAGMAs, Alembic integration, and the non-obvious WAL-backup pitfall we hit during integration testing. No new prompt deviations.
 - **2026-04-21** — Milestone 3 complete. Added §4 entries #29–#33 (streak-as-of-yesterday, milestone transition semantics, catch-up rollover, scheduler skip flag, UTC fallback). Two new prompt-tree additions logged in §5 (`services/` dir, `timezone` option). Caught a real-world-feel bug while testing — today's PENDING instances breaking the streak on the same rollover that generated them — documented as #29.
 - **2026-04-21** — Milestone 4 complete. Added §4 entries #34–#38 (parent JWT + refresh, error envelope with request IDs, WS notification-only protocol, inline instance generation on chore mutations, explicit MemberStats initialization). No new prompt deviations. 188 tests total (93 new): full HTTP coverage of every router, auth flow edge cases, WS hello/ping-pong/broadcast, global error shape, and service-level tests for undo-window expiry that need injected time.
-- **2026-04-21** — Milestone 5 complete. Live probe against HA 2026.4.1 resolved §8 #1 and shaped the bridge design. Added §4 entries #39–#46 (async worker with debounce + backoff, env-based client discovery, deferred events, FC tag identity pattern, inline stats recompute, tz fallback chain, Local To-do provisioning flow, blocking startup reconcile). Two new §5 deviations (user-managed Local To-do entities, `ha_todo_entity_id` column). 218 tests total (30 new): HTTP-level `HAClient` via `httpx.MockTransport`, bridge worker behaviour with a `FakeHAClient` (coalesce, backlog cap, todo create/update flow), reconciler convergence paths (create / update / delete orphans / record UID-from-match), full end-to-end via a monkey-patched `make_client_from_env` showing a completion drives the right set of HA calls and event-retry on `HAUnavailableError`.
+- **2026-04-21** — Milestone 5 complete. Live probe against HA 2026.4.1 resolved §8 #1 and shaped the bridge design. Added §4 entries #39–#46 (async worker with debounce + backoff, env-based client discovery, deferred events, FC tag identity pattern, inline stats recompute, tz fallback chain, Local To-do provisioning flow, blocking startup reconcile). Two new §5 deviations (user-managed Local To-do entities, `ha_todo_entity_id` column). 218 tests total (30 new).
+- **2026-04-21** — Milestone 6 complete. React 18 + Vite SPA, 245 KB bundle (76 KB gzipped). Added §4 entries #47–#53 covering routing, build output, static mount, typography, theming, state management, and parent-mode refresh. Multi-stage Dockerfile now bakes the SPA at image-build time. Dev scripts (dev_backend.sh, dev_frontend.sh, lint.sh) added. Backend tests unchanged at 218 (SPA has no backend impact; frontend unit tests land in milestone 7 or 8 per `DECISIONS.md`).

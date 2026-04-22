@@ -15,9 +15,12 @@ dist/
 build/
 frontend/dist/
 lovelace-card/dist/
-backend/src/family_chores/static/assets/
-backend/src/family_chores/static/index-*.js
-backend/src/family_chores/static/index-*.css
+
+# Built SPA output — produced by `npm run build` (locally) or the
+# frontend-build Docker stage. We keep the empty dir via .gitkeep so
+# FastAPI's static mount has something to look at.
+backend/src/family_chores/static/*
+!backend/src/family_chores/static/.gitkeep
 
 node_modules/
 

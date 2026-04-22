@@ -1,0 +1,54 @@
+/* Nunito via Google Fonts CDN — graceful fallback to system stack when
+ * the add-on is offline. @import must come before other statements. */
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --accent: #6366f1;
+  --accent-soft: #e0e7ff;
+  --accent-ink: #312e81;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Nunito', system-ui, -apple-system, sans-serif;
+  background: #faf8ff;
+  color: #1e1b4b;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: contain;
+}
+
+/* Disable text selection on interactive surfaces (kid tablet). */
+button,
+.tile,
+.chore-card,
+.pin-key {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Utility class for member-themed surfaces.
+ *   <div className="themed" style={{ '--accent': m.color }}>
+ * Keeps theming wire-in compact without wiring a CSS-in-JS lib. */
+.themed {
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 80%, black));
+  color: white;
+}
+
+.themed-soft {
+  background: color-mix(in srgb, var(--accent) 12%, white);
+  color: var(--accent-ink);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, white);
+}
