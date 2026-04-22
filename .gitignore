@@ -14,14 +14,14 @@ __pycache__/
 
 dist/
 build/
-frontend/dist/
+family_chores/frontend/dist/
 lovelace-card/dist/
 
 # Built SPA output — produced by `npm run build` locally or the
 # frontend-build Docker stage. The directory doesn't exist in a fresh
 # clone; FastAPI's static mount checks for `index.html` specifically
 # and falls through to a helpful "run `npm run build`" message.
-backend/src/family_chores/static/
+family_chores/backend/src/family_chores/static/
 
 node_modules/
 

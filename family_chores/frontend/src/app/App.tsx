@@ -1,6 +1,7 @@
 import { HashRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppRoutes } from './routes'
+import { ErrorBoundary } from '../components/ErrorBoundary'
 import { WebSocketProvider } from '../ws/provider'
 
 const queryClient = new QueryClient({
@@ -15,12 +16,14 @@ const queryClient = new QueryClient({
 
 export function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <HashRouter>
-        <WebSocketProvider>
-          <AppRoutes />
-        </WebSocketProvider>
-      </HashRouter>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <HashRouter>
+          <WebSocketProvider>
+            <AppRoutes />
+          </WebSocketProvider>
+        </HashRouter>
+      </QueryClientProvider>
+    </ErrorBoundary>
   )
 }

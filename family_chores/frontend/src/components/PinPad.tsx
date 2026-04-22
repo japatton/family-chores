@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 
 interface PinPadProps {
@@ -18,11 +18,21 @@ export function PinPad({
 }: PinPadProps) {
   const [value, setValue] = useState('')
 
+  // Route onComplete through a ref so the "fire when full" effect below
+  // depends only on `value` / `length`. Callers almost always pass an
+  // inline arrow function, which would otherwise re-trigger the effect
+  // on every parent re-render and cause duplicate submits (the race
+  // that produced the post-PIN white screen).
+  const onCompleteRef = useRef(onComplete)
+  useEffect(() => {
+    onCompleteRef.current = onComplete
+  })
+
   useEffect(() => {
     if (value.length === length) {
-      onComplete(value)
+      onCompleteRef.current(value)
     }
-  }, [value, length, onComplete])
+  }, [value, length])
 
   useEffect(() => {
     if (error) setValue('')
@@ -39,18 +49,21 @@ export function PinPad({
   }
 
   return (
-    <div className="w-full max-w-md mx-auto flex flex-col items-center gap-6">
-      <div className="text-fluid-lg font-black text-brand-900">{label}</div>
+    <div className="w-full max-w-md mx-auto flex flex-col items-center gap-6 font-display">
+      <div className="flex items-center gap-3 text-fluid-lg font-black text-brand-900">
+        <span aria-hidden className="text-fluid-xl">🔒</span>
+        {label}
+      </div>
 
       <div className="flex gap-3">
         {Array.from({ length }, (_, i) => (
           <div
             key={i}
             className={clsx(
-              'size-14 sm:size-16 rounded-2xl border-2 grid place-items-center text-fluid-xl font-black',
+              'size-16 sm:size-20 rounded-2xl grid place-items-center text-fluid-xl font-black shadow-pop transition-transform',
               i < value.length
-                ? 'bg-brand-600 border-brand-600 text-white'
-                : 'bg-white border-brand-100 text-brand-900',
+                ? 'bg-brand-600 text-white scale-[1.02] animate-pop-in'
+                : 'bg-white text-brand-900 border-2 border-brand-100',
             )}
           >
             {i < value.length ? '•' : ''}
@@ -59,7 +72,10 @@ export function PinPad({
       </div>
 
       {error && (
-        <div className="text-fluid-sm font-semibold text-rose-600" role="alert">
+        <div
+          className="text-fluid-sm font-bold text-rose-600 animate-wiggle"
+          role="alert"
+        >
           {error}
         </div>
       )}
@@ -71,7 +87,7 @@ export function PinPad({
             type="button"
             onClick={() => press(d)}
             disabled={disabled}
-            className="pin-key min-h-touch rounded-2xl bg-white text-brand-900 shadow-card text-fluid-xl font-black active:scale-[0.98] disabled:opacity-50"
+            className="pin-key press min-h-touch rounded-2xl bg-white text-brand-900 shadow-card text-fluid-xl font-black disabled:opacity-50"
           >
             {d}
           </button>
@@ -80,7 +96,7 @@ export function PinPad({
           type="button"
           onClick={backspace}
           disabled={disabled || value.length === 0}
-          className="pin-key min-h-touch rounded-2xl bg-brand-50 text-brand-700 shadow-card text-fluid-base font-bold active:scale-[0.98] disabled:opacity-50"
+          className="pin-key press min-h-touch rounded-2xl bg-brand-50 text-brand-700 shadow-card text-fluid-lg font-bold disabled:opacity-50"
           aria-label="backspace"
         >
           ⌫
@@ -89,7 +105,7 @@ export function PinPad({
           type="button"
           onClick={() => press('0')}
           disabled={disabled}
-          className="pin-key min-h-touch rounded-2xl bg-white text-brand-900 shadow-card text-fluid-xl font-black active:scale-[0.98] disabled:opacity-50"
+          className="pin-key press min-h-touch rounded-2xl bg-white text-brand-900 shadow-card text-fluid-xl font-black disabled:opacity-50"
         >
           0
         </button>
@@ -97,7 +113,7 @@ export function PinPad({
           type="button"
           onClick={() => setValue('')}
           disabled={disabled || value.length === 0}
-          className="pin-key min-h-touch rounded-2xl bg-brand-50 text-brand-700 shadow-card text-fluid-sm font-bold active:scale-[0.98] disabled:opacity-50"
+          className="pin-key press min-h-touch rounded-2xl bg-brand-50 text-brand-700 shadow-card text-fluid-sm font-bold disabled:opacity-50"
         >
           clear
         </button>
