@@ -62,11 +62,15 @@ python_version = "3.12"
 strict = true
 packages = ["family_chores"]
 mypy_path = "src"
+# `import-untyped` fires when a third-party package is installed but has
+# no `py.typed` marker. Disabling globally lets us import untyped libraries
+# without per-import ignores (which go stale when the library gains types
+# in a patch release — as happened with apscheduler 3.11.x).
+disable_error_code = ["import-untyped"]
 
 [[tool.mypy.overrides]]
 module = ["apscheduler.*"]
 ignore_missing_imports = true
-disable_error_code = ["import-untyped"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
