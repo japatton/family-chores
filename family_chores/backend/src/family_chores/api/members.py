@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -154,7 +154,10 @@ async def update_member(
 @router.delete(
     "/{slug}",
     status_code=status.HTTP_204_NO_CONTENT,
-    response_class=Response,
+    # FastAPI infers `response_model = NoneType` from the `-> None`
+    # annotation, which is truthy and trips its "204 must not have a
+    # body" assertion. Explicit None overrides the inference.
+    response_model=None,
 )
 async def delete_member(
     slug: str,
