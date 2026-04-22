@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Milestone 7 — SPA polish + Lovelace card.** Completion chime
+  synthesised via Web Audio (two-note A5 → C#6 bell, no binary asset),
+  gated on the persisted `soundEnabled` flag and a 🔔/🔕 toggle in the
+  shell header. Member-accent-coloured confetti burst on every `DONE`
+  completion via `canvas-confetti`. New `CelebrationAllDone` screen
+  replaces the plain "All done" text, firing a second confetti burst and
+  showing today's earned points + current streak. A slow 90-second
+  `background-position` shift on the body reduces image-retention on the
+  32" wall display; respects `prefers-reduced-motion`. New
+  `lovelace-card/` workspace builds a single-file (~26 KB minified) Lit
+  card via Rollup; reads HA entities only, surfaces each family
+  member's points / streak / today progress, and shows a "pending
+  approvals" badge when non-zero. Ships a GUI editor
+  (`family-chores-card-editor`) so users don't have to touch YAML.
+  Install steps in `lovelace-card/README.md` and `DOCS.md`.
 - **Milestone 6 — SPA skeleton.** React 18 + TypeScript + Vite + Tailwind
   CSS + TanStack Query + Zustand + React Router, all wired to the existing
   HTTP + WebSocket API. Three main views (Today, Member, Parent) with

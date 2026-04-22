@@ -284,6 +284,18 @@ SQLite is the only source of truth. HA entities are a one-way mirror. Business l
 
 53. **Parent token + sliding refresh on the client.** `useParentStore` keeps `{token, expiresAt, lastActivity}`; `isActive()` gates the gate. Client can call `/api/auth/refresh` on activity to renew — matches the spec's 5-min-inactivity semantic without server-side session state.
 
+54. **Completion chime is Web Audio, not a binary asset.** `useChime` builds a short A5 → C#6 bell via `AudioContext` + `OscillatorNode` + `GainNode`. Two-line synthesis, zero binary payload, ships offline. Silent failure if the browser has suspended audio (first tap of the session may be silent; subsequent ones work because the tap counts as user activation).
+
+55. **Confetti uses `canvas-confetti` imperatively.** The library injects its own canvas into `document.body`; wrapping it in React is more friction than value. `fireConfetti({ accent })` is called from the completion `onSuccess` callback. Palette is `[member.color, white, yellow]` — the tap feels personally theirs.
+
+56. **Burn-in shift via a 90-second `background-position` animation.** On a 32" wall-mounted panel, static UI elements risk image retention. The body background is a 300% × 300% gradient animated over 90 s — unnoticeable to foveal attention, does its job in peripheral. Respects `prefers-reduced-motion`.
+
+57. **Lovelace card ships as a separate build artefact.** Rollup bundles Lit + decorators into a single ES-module file (~26 KB minified) at `lovelace-card/dist/family-chores-card.js`. Loaded via HA's `/local/` + Resources registration, not via the add-on's HTTP API. The card only reads entities the bridge publishes — if something's wrong with the add-on, the card silently shows no rows, which is a useful diagnostic by itself.
+
+58. **Card tap navigates to the Ingress app by default.** The prompt's suggested `tap_action.navigation_path` defaults to `/hassio/ingress/local_family_chores`. Not every install has that exact slug (users can rename), so the editor exposes an override; the card is happy with a bare config in the common case.
+
+59. **Card editor is built into the same bundle** via a direct `import`. HA's custom-card picker calls `getConfigElement()` which returns a fresh `<family-chores-card-editor>`; since the editor module is registered at import time in the same bundle, no lazy-loading dance is needed.
+
 ---
 
 ## 5. Deviations from prompt
@@ -393,8 +405,8 @@ These are explicitly out of scope for v1, but we leave the architecture unbent s
 3. ☑ Recurrence + instance generation + scheduler — commit `5d124dc`
 4. ☑ API + auth — commit `863abde`
 5. ☑ HA bridge — commit `f45d443`
-6. ☑ SPA skeleton — this milestone
-7. ☐ SPA polish + card
+6. ☑ SPA skeleton — commit `f95ccba`
+7. ☑ SPA polish + Lovelace card — commit `e8fd483`
 8. ☐ Tests + CI
 
 Stop and summarize for the human after each.
@@ -410,3 +422,4 @@ Stop and summarize for the human after each.
 - **2026-04-21** — Milestone 4 complete. Added §4 entries #34–#38 (parent JWT + refresh, error envelope with request IDs, WS notification-only protocol, inline instance generation on chore mutations, explicit MemberStats initialization). No new prompt deviations. 188 tests total (93 new): full HTTP coverage of every router, auth flow edge cases, WS hello/ping-pong/broadcast, global error shape, and service-level tests for undo-window expiry that need injected time.
 - **2026-04-21** — Milestone 5 complete. Live probe against HA 2026.4.1 resolved §8 #1 and shaped the bridge design. Added §4 entries #39–#46 (async worker with debounce + backoff, env-based client discovery, deferred events, FC tag identity pattern, inline stats recompute, tz fallback chain, Local To-do provisioning flow, blocking startup reconcile). Two new §5 deviations (user-managed Local To-do entities, `ha_todo_entity_id` column). 218 tests total (30 new).
 - **2026-04-21** — Milestone 6 complete. React 18 + Vite SPA, 245 KB bundle (76 KB gzipped). Added §4 entries #47–#53 covering routing, build output, static mount, typography, theming, state management, and parent-mode refresh. Multi-stage Dockerfile now bakes the SPA at image-build time. Dev scripts (dev_backend.sh, dev_frontend.sh, lint.sh) added. Backend tests unchanged at 218 (SPA has no backend impact; frontend unit tests land in milestone 7 or 8 per `DECISIONS.md`).
+- **2026-04-21** — Milestone 7 complete. SPA polish (Web-Audio chime, member-accent confetti, celebratory all-done screen, burn-in shift, sound toggle) + Lovelace card (`lovelace-card/` workspace, Rollup+Lit, ~26 KB single-file ES module with a GUI editor). Added §4 entries #54–#59. SPA bundle grew 245 KB → 259 KB (+5 KB gzipped) — all confetti. 218 backend tests still pass; both TS surfaces typecheck clean.
