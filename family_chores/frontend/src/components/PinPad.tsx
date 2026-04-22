@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 
 interface PinPadProps {
@@ -18,11 +18,21 @@ export function PinPad({
 }: PinPadProps) {
   const [value, setValue] = useState('')
 
+  // Route onComplete through a ref so the "fire when full" effect below
+  // depends only on `value` / `length`. Callers almost always pass an
+  // inline arrow function, which would otherwise re-trigger the effect
+  // on every parent re-render and cause duplicate submits (the race
+  // that produced the post-PIN white screen).
+  const onCompleteRef = useRef(onComplete)
+  useEffect(() => {
+    onCompleteRef.current = onComplete
+  })
+
   useEffect(() => {
     if (value.length === length) {
-      onComplete(value)
+      onCompleteRef.current(value)
     }
-  }, [value, length, onComplete])
+  }, [value, length])
 
   useEffect(() => {
     if (error) setValue('')
