@@ -1,0 +1,11 @@
+{
+  "name": "family-chores-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Web app scaffold for Family Chores (Phase 3 placeholder; see DECISIONS §11).",
+  "scripts": {
+    "build": "echo 'Not yet implemented — see DECISIONS §11 step 11.' && exit 0",
+    "test": "echo 'Not yet implemented — see DECISIONS §11 step 11.' && exit 0",
+    "lint": "echo 'Not yet implemented — see DECISIONS §11 step 11.' && exit 0"
+  }
+}

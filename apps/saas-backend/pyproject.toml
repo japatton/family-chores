@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "family-chores-saas"
+version = "0.1.0"
+description = "SaaS deployment scaffold for Family Chores (Phase 3 placeholder; see DECISIONS §11)."
+requires-python = ">=3.12"
+authors = [{ name = "Jason Patton" }]
+license = { text = "MIT" }
+# Real SaaS deps (FastAPI, identity-provider client, observability) land in
+# Phase 3. Step 10 of the Phase 2 refactor will add the three shared
+# packages as workspace deps + a PlaceholderAuthStrategy. Empty for now.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

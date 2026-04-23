@@ -1,0 +1,10 @@
+# Family Chores — pnpm workspace root.
+#
+# Membership evolves across the refactor steps (see DECISIONS §11):
+#   - Step 1 (this commit): apps/web scaffold only. family_chores/frontend
+#     and lovelace-card are still npm-based and join pnpm in step 7.
+#   - Step 7: family_chores/frontend migrates from npm to pnpm and is added.
+#             lovelace-card migrates at the same time.
+
+packages:
+  - "apps/web"

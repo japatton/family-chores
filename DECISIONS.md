@@ -471,3 +471,160 @@ Stop and summarize for the human after each.
 - **2026-04-21** — Milestone 6 complete. React 18 + Vite SPA, 245 KB bundle (76 KB gzipped). Added §4 entries #47–#53 covering routing, build output, static mount, typography, theming, state management, and parent-mode refresh. Multi-stage Dockerfile now bakes the SPA at image-build time. Dev scripts (dev_backend.sh, dev_frontend.sh, lint.sh) added. Backend tests unchanged at 218 (SPA has no backend impact; frontend unit tests land in milestone 7 or 8 per `DECISIONS.md`).
 - **2026-04-21** — Milestone 7 complete. SPA polish (Web-Audio chime, member-accent confetti, celebratory all-done screen, burn-in shift, sound toggle) + Lovelace card (`lovelace-card/` workspace, Rollup+Lit, ~26 KB single-file ES module with a GUI editor). Added §4 entries #54–#59. SPA bundle grew 245 KB → 259 KB (+5 KB gzipped) — all confetti. 218 backend tests still pass; both TS surfaces typecheck clean.
 - **2026-04-22** — Milestone 8 complete. Backend clean under `ruff check` + `mypy --strict`; fixed real type bugs (int-of-None in recurrence config validation, `object`-typed HA client, `create_engine` arg) and added proper type annotations to every route handler. Frontend gets Vitest + happy-dom + @testing-library + ESLint flat-config; 25 new unit tests on stores, API client, PinPad, UndoToast, ProgressRing. Added §4 entries #60–#65. `scripts/lint.sh` now mirrors CI. Two GitHub Actions workflows: `ci.yml` (backend + frontend + card) on every PR; `release.yml` on tag builds multi-arch add-on images for amd64/aarch64/armv7 via QEMU, builds the card, attaches everything to a GitHub Release. 243 total tests (218 backend + 25 frontend), all green.
+
+---
+
+## 11. Monorepo refactor
+
+Tracking prompt: **`PROMPT_PHASE2.md`** (to be committed at start of step 1). The refactor is purely structural — no user-facing changes, no new features. Goal: split shared code (`packages/core`, `/db`, `/api`) from deployment targets (add-on at `family_chores/`, plus future `apps/saas-backend/` and `apps/web/`), with the auth path abstracted and every tenant-scoped table gaining a nullable `household_id` so multi-tenancy can be added later without another migration earthquake.
+
+**Layout asymmetry — deliberate.** The prompt's target tree nested the add-on under `apps/addon/`. We're keeping the add-on at **`family_chores/`** at the repo root instead, and only `saas-backend/` and `web/` live under `apps/`. Reason: HA Supervisor scans add-on repos for `config.yaml` files, and while it technically recurses, every convention-based add-on repo places each add-on as a direct child of the repo root (one level deep). We don't want the first live probe of Supervisor's deep-recursion behavior to happen during a user reinstall. Cost of the asymmetry: slightly inconsistent mental model ("apps/ for non-HA targets only"). Benefit: zero risk to existing HA installs. Decision logged 2026-04-23 after reviewer guidance on the phase-2 plan.
+
+### Sequencing plan (13 steps; commit + green CI after each)
+
+**Pre-flight (this entry):**
+- Write §11 with plan, risks, questions. **Pause for review.** ← YOU ARE HERE
+
+**Step 1 — Scaffolds + workspace tooling.**
+- Copy the Phase 2 prompt verbatim to `PROMPT_PHASE2.md` (do not overwrite `PROMPT.md`).
+- Create `TODO_POST_REFACTOR.md` with a single stub heading.
+- Root `pyproject.toml` with `[tool.uv.workspace]` declaring the workspace members that exist at step-1 time: `packages/core`, `packages/db`, `packages/api`, `apps/saas-backend`. (The add-on joins as a workspace member in step 6 when its pyproject moves to `family_chores/pyproject.toml`.)
+- Root `pnpm-workspace.yaml` declaring only `apps/web` for now. `family_chores/frontend` and `lovelace-card` are NPM-based today and join pnpm as part of step 7. Rationale: step 1 stays narrow (scaffolds + tooling proof), and pnpm won't try to link directories that still ship `package-lock.json`.
+- Root `package.json` with `scripts.build = "pnpm -r build"`.
+- Empty `packages/{core,db,api}` and `apps/{saas-backend,web}` with placeholder `pyproject.toml` / `package.json`, `__init__.py`, and a single `test_smoke.py` per python package. **No `apps/addon/` directory** — the add-on's scaffold work happens in-place at `family_chores/` during step 6. No logic moves yet. `uv sync` and `pnpm install` must both succeed at root.
+- CI unchanged in this step — old jobs still point at `family_chores/`. Goal is just to prove the workspaces are valid.
+
+**Step 2 — Move `core/` → `packages/core/`.**
+- Relocate the four files (`recurrence.py`, `instances.py` *→ does not exist as a file today; core instance logic lives in services/; flag if I mis-mapped*, `streaks.py`, `points.py`, `time.py`) and their tests.
+- Package name flips `family_chores.core` → `family_chores_core`. One mechanical import-path sweep across callers.
+- Tests: all `test_recurrence.py`, `test_streaks.py`, `test_points.py` pass after moving. Zero test edits beyond imports.
+
+**Step 3 — Move `db/` → `packages/db/`.**
+- Relocate `base.py`, `models.py`, `startup.py`, `migrations/` (including `env.py` and both existing revision files). **Revision IDs must not change** — filenames stay as `0001_*.py` and `0002_*.py`, the `down_revision` chain is preserved.
+- Extract SQLite PRAGMA `connect`-event hooks into `packages/db/src/family_chores_db/pragmas.py` (no behavior change — decisions #24, #27 still hold).
+- `alembic.ini` moves to `packages/db/alembic.ini`; programmatic runtime `Config` (§4 #26) updates its `script_location`.
+- Package name `family_chores.db` → `family_chores_db`. Mechanical import sweep.
+- Tests: `test_models.py`, `test_startup_recovery.py` pass unchanged except imports.
+
+**Step 4 — Move api (routers, services, schemas, WS, errors) → `packages/api/`.**
+- Relocate `api/{auth,members,chores,instances,admin,ws,errors,schemas,deps}.py`, plus `services/{instance_service,instance_actions,rollover_service,stats_service}.py`, plus `security.py`. **`api/events.py` gets split per Q4**: the `EventProtocol` + concrete event constructors stay in `packages/api/src/family_chores_api/events.py`; the bridge-side HTTP `POST /api/events/...` call moves to `family_chores_addon.ha.bridge` in step 6.
+- **`security.py` refinement per Q3**: rewrite `sign()` / `verify()` to take an explicit `secret: str` parameter — no module-level constant read. Routers get the secret via DI (an `SecretProvider` callable injected through `create_app`). Add-on wiring reads `app_config` row; `PlaceholderAuthStrategy` in saas scaffold raises. Module docstring documents this contract explicitly.
+- `app.py` becomes `packages/api/src/family_chores_api/app.py` and is refactored into a `create_app(*, auth_strategy, bridge, static_dir=None, skip_scheduler=False)` factory that takes injected deps. Keep IngressAuth implementation in place **as a concrete class inside `deps/auth.py` temporarily** — the abstraction happens in step 5.
+- The addon's `app_factory.py` (living inside `family_chores/` per the asymmetry; exact path pending Q1) wraps `create_app` and supplies addon-specific wiring (Supervisor env client, scheduler start, static dir path).
+- Package name `family_chores.api` / `family_chores.services` → `family_chores_api.routers` / `family_chores_api.services`.
+- Tests: all `test_api_*.py`, `test_instance_service.py`, `test_instance_actions.py`, `test_rollover.py`, `test_lifespan_integration.py`, `test_api_ws.py`, `test_api_errors.py` pass unchanged except imports and the new factory-based `conftest.py` fixture.
+
+**Step 5 — Extract the AuthStrategy abstraction.**
+- In `packages/api/deps/auth.py`: define `Identity`, `ParentIdentity`, `AuthStrategy` Protocol (`identify`, `require_parent`).
+- Move the Ingress-specific implementation (`X-Remote-User` trust + parent-PIN JWT check) to the addon package at `family_chores/src/family_chores_addon/auth.py` (flattened layout per Q8) as `IngressAuthStrategy`.
+- Tenant injection: add `deps/tenant.py` providing `get_current_household_id(identity)` which for `IngressAuthStrategy` returns `None` (single-tenant add-on mode).
+- Add a `PlaceholderAuthStrategy` in `apps/saas-backend/` that raises `HTTPException(501)` on everything except `/health`.
+- Add a test guard: `tests/test_packages_are_clean.py` greps `packages/api/src/` and `packages/core/src/` for `"supervisor"`, `"X-Ingress"`, `"X-Remote-User"`, `"HA_TOKEN"`, `"SUPERVISOR_TOKEN"` — must all be zero hits. Fails the suite if the addon starts leaking into shared packages later.
+- Add the **dependency-arrow architecture test** (Q4): `tests/test_dependency_arrows.py` walks every `.py` under `packages/` and fails on any `from family_chores_addon`, `from family_chores_saas`, `import family_chores_addon`, or `import family_chores_saas`. Protects the `apps → packages` arrow permanently.
+- Add a `FakeAuthStrategy` test fixture that returns a fixed household_id; use it in the scoping tests introduced in step 9.
+
+**Step 6 — Restructure the add-on in-place at `family_chores/` (flattened layout, per Q8).**
+- Add-on root stays at `family_chores/`. `config.yaml`, `Dockerfile`, `build.yaml`, `run.sh`, `icon.png`, `logo.png`, `DOCS.md`, `CHANGELOG.md`, `.dockerignore` do not move.
+- **Flatten the backend layout (Q8).** Move the Python sources `family_chores/backend/src/family_chores/*` → `family_chores/src/family_chores_addon/*`. The `family_chores/backend/` wrapper directory is deleted. `family_chores/pyproject.toml` is created at the add-on root (replacing `family_chores/backend/pyproject.toml`). `family_chores/tests/` replaces `family_chores/backend/tests/` as the addon's test root. Final shape matches `apps/saas-backend/{pyproject.toml, src/family_chores_saas/, tests/}` symmetrically.
+- Contents of the renamed package after steps 2–5 have extracted everything that belongs in `packages/`: `ha/` (client, bridge, reconcile), `scheduler.py`, `config.py` (options.json reader), `__main__.py`, plus the new `app_factory.py` (wires `create_app` with `IngressAuthStrategy` + `HABridge` + addon static dir) and `auth.py` (IngressAuthStrategy, moved in step 5). `ha/bridge.py` stays one file (prompt's `sync.py` split is illustrative; decisions #39–#43 stay intact).
+- Addon `pyproject.toml` at `family_chores/pyproject.toml` declares workspace deps on `family-chores-core`, `-db`, `-api` + addon-only deps (httpx, APScheduler, argon2-cffi, PyJWT). The workspace member path in the root `pyproject.toml` is `family_chores`.
+- Tests migrate `family_chores/backend/tests/` → `family_chores/tests/`. Imports flip from `family_chores.*` to `family_chores_addon.*` / `family_chores_api.*` / etc. Tests that exercise the HA bridge, reconciler, scheduler, or lifespan are conceptually addon-tests and belong here.
+- **CHANGELOG note (user-facing, option b phrasing per Q7).** Append a paragraph to `family_chores/CHANGELOG.md`: "This release is a large internal restructure of the add-on's source tree. The normal HA Supervisor update flow should work — just click Update. If you see build errors during the update, uninstall and reinstall the add-on as a fallback: your data at `/data/family_chores.db` is preserved because the add-on **slug remains `family_chores`**, which is what HA Supervisor keys persistence on."
+- HA Supervisor impact: zero. `repository.yaml` at repo root is unchanged; the add-on is still discovered as a direct child of the repo root; slug is unchanged.
+
+**Step 7 — Ingress SPA stays at `family_chores/frontend/`, workspace-enrolled.**
+- SPA directory does not move. `family_chores/frontend/` keeps its `package.json`, `vite.config.ts`, `tsconfig.json`, `index.html`, `src/`, `public/`, `tailwind.config.*`, `postcss.config.*`, `eslint.config.js`, `vitest.config.*`.
+- Convert to pnpm: delete `package-lock.json`, regenerate `pnpm-lock.yaml` via `pnpm install` at workspace root. Add `family_chores/frontend` to `pnpm-workspace.yaml`.
+- Update `family_chores/Dockerfile` `frontend-build` stage paths: `npm ci && npm run build` → `pnpm install --frozen-lockfile && pnpm run build`. Built output copies to `family_chores/src/family_chores_addon/static/` (flattened per Q8; same index.html-gate convention, decisions #48–#49 preserved).
+- Frontend 25 vitest tests pass unchanged.
+
+**Step 8 — The household_id migration.**
+- New Alembic revision `0003_add_household_id` (down_revision = `0002_...`).
+- Adds nullable `household_id VARCHAR(36)` + index on every tenant-scoped table: `member`, `chore`, `chore_assignment`, `chore_instance`, `member_stats`, `activity_log`, `app_config`. (Verify this list against `db/models.py` before writing the migration.)
+- No backfill; no NOT NULL; no data changes.
+- SQLAlchemy model columns added in parallel (`Mapped[str | None]`, default `None`).
+- Up/down tests in `packages/db/tests/test_migration_0003.py` verify: old DB upgrades cleanly, new column is NULL on existing rows, downgrade drops the column without data loss.
+
+**Step 9 — `scoped()` helper + per-service plumbing.**
+- `packages/db/src/family_chores_db/scoped.py`: `def scoped(col, value): return col.is_(None) if value is None else col == value`. Exported for use by services.
+- Every query in `packages/api/services/` that reads from a tenant-scoped table grows an optional `household_id: str | None = None` parameter and applies `scoped()`.
+- Every router calls services with `household_id=Depends(get_current_household_id)`, which for `IngressAuthStrategy` returns `None` — so add-on behavior is unchanged byte-for-byte.
+- New tests using `FakeAuthStrategy(household_id="abc")` verify that requests see only `"abc"`-scoped rows; the default addon path is also covered by every existing 218 tests staying green.
+
+**Step 10 — `apps/saas-backend/` scaffold.**
+- `pyproject.toml` declaring `family-chores-core`, `family-chores-db`, `family-chores-api` as workspace deps.
+- `src/family_chores_saas/app_factory.py`: calls `create_app(auth_strategy=PlaceholderAuthStrategy(), bridge=NoOpBridge(), static_dir=None)`.
+- `tests/test_smoke.py`: `/health` returns 200; every tenant-scoped endpoint returns 501.
+- README.md with "Placeholder. Implementation in Phase 3."
+
+**Step 11 — `apps/web/` scaffold.**
+- `package.json` declaring the app as a pnpm workspace member. Vite + React + TS, bare-bones.
+- `src/main.tsx` renders a single "Coming soon" placeholder.
+- `tests/` with one vitest that asserts the placeholder renders.
+- README.md with "Placeholder. Implementation in Phase 3."
+
+**Step 12 — CI restructure.**
+- Replace `ci.yml` with a matrix of parallel jobs as described in the prompt §8: `lint-python`, `test-core`, `test-db`, `test-api`, `test-addon`, `test-saas`, `lint-frontend`, `test-frontend`, `build-addon-frontend`, `build-card`, `build-addon-image`, `integration-addon` (new).
+- `integration-addon`: boots the add-on image against `scripts/dev_supervisor_stub.py`, hits `/api/info`, asserts `ha_connected` flag + a couple of endpoints return 200.
+- `release.yml` updates paths only (multi-arch build still runs, QEMU unchanged, card bundle job unchanged).
+- Success criterion: wall-clock CI time on PRs ≤ today's.
+
+**Step 13 — Close out §11.**
+- Log every deviation encountered during steps 1–12 with commit hashes (§10-changelog style).
+- Append any TODOs caught during the refactor to `TODO_POST_REFACTOR.md`.
+- Final test count: 243 existing + ~20 new = **~263 total** (218 backend split across core/db/api/addon + 25 frontend + new scoping/migration/smoke tests). If it's materially higher, scope crept.
+
+### What I expect to find tricky
+
+1. **HA Supervisor add-on discovery path.** ✅ **Resolved 2026-04-23 before step 1:** add-on stays at `family_chores/` (direct child of repo root) instead of nesting under `apps/addon/`. Eliminates the risk of Supervisor's deep-recursion behavior being first exercised on live installs. Layout asymmetry documented above.
+
+2. **Alembic revision chain survival.** The migrations live inside the Python package today (§4 #26) and are discovered via a programmatically-built `Config` in app startup. Moving them to `packages/db/` means updating the `script_location` in that programmatic config AND updating `packages/db/alembic.ini` for dev CLI use. Any test that expects the migrations to run from `backend/src/...` needs path surgery. Worth a dedicated commit.
+
+3. **`api/services/` coupling to the HA bridge.** Current `instance_actions.py` and `rollover_service.py` import from `family_chores.ha.bridge` directly (via `notify_*` helpers) to enqueue HA updates. Per the "zero HA deps in packages" rule, the services need to call a `BridgeProtocol` passed through DI, and the concrete `HABridge` lives with the addon package (`family_chores_addon.ha.bridge`). Need to trace every `from ...ha...` import in services to confirm the interface surface before step 4. If it's more than 3–4 methods, I'll hold a spot in step 4 for a small `BridgeProtocol` definition in `packages/api/deps/bridge.py`.
+
+4. **Static-dir injection into `create_app`.** Today `app.py` mounts `StaticFiles` from a path it computes relative to the package directory (§4 #48 #49). In the refactor the static SPA lives in the addon package, which `packages/api/` can't know about. Plan: `create_app(..., static_dir: Path | None = None)` mounts iff provided, preserving the `index.html`-gate. Addon passes `Path(__file__).parent / "static"`.
+
+5. **Dockerfile build context.** `family_chores/Dockerfile` currently uses `family_chores/` as its build context, but it now needs the repo root (to install workspace-member packages from `packages/`). GHA's `docker/build-push-action@v5` accepts a `context:` key — will set it to `.` (repo root) and a `file:` of `family_chores/Dockerfile`. `family_chores/.dockerignore` stays in place but must no longer exclude `packages/`. A new root-level `.dockerignore` may also be needed to keep the build context lean.
+
+6. **pnpm migration of the existing SPA.** Mostly mechanical (`pnpm import` consumes `package-lock.json` and emits `pnpm-lock.yaml` preserving resolutions), but peer-dep warnings may surface differently. Budget one round of "silence peer warnings" triage.
+
+7. **Tests that relied on rootdir/sys.path tricks.** §5 (2026-04-22 restructure) noted three test files fixed by switching from `from backend.tests._ha_fakes` to `from tests._ha_fakes`. With tests now split across four pytest roots (`packages/core/tests`, `packages/db/tests`, `packages/api/tests`, `family_chores/tests`), a shared `_ha_fakes.py` needs a new home — likely a `tests/_fixtures/` shared package or a `conftest.py` at repo root that registers the fixture directory. Will decide in step 4 when the api tests move.
+
+8. **Test count arithmetic.** The prompt asks for "all 243 existing tests still pass unchanged." Some existing tests inherently cross the new package boundaries (e.g. `test_lifespan_integration.py` exercises app startup, DB, HA bridge, scheduler all at once). These stay at `family_chores/tests/` because that's where the wiring lives, even though the DB code under test is in `packages/db/`. Integration-style tests belong to the composition root. Will call this out explicitly in step 4 commits.
+
+### Clarifying questions — all resolved 2026-04-23
+
+1. **HA Supervisor add-on discovery.** ✅ **Resolved.** Add-on stays at `family_chores/` at repo root. See "Layout asymmetry" paragraph above.
+
+2. **`db/startup.py` home.** ✅ **Resolved.** Goes to `packages/db/src/family_chores_db/recovery.py`. Apps call it from their own lifespan.
+
+3. **`security.py` (argon2 + JWT).** ✅ **Resolved with refinement.** Lives at `packages/api/src/family_chores_api/security.py`. **Signing-secret injection:** expose `sign(payload, secret)` / `verify(token, secret)` — no module-level secret constant. Each app sources its own secret (add-on reads from `app_config` row; future SaaS reads from env / secret manager). Module docstring documents this explicitly so no future contributor re-introduces a default.
+
+4. **`api/events.py` split.** ✅ **Resolved with refinement.** Split in two:
+   - `packages/api/src/family_chores_api/events.py` defines an **`EventProtocol`** (shape: `event_type: str`, `payload: dict`) and concrete event constructors (`MilestoneCrossed`, `ChoreCompleted`, etc.) that implement it. Routers build events against the protocol.
+   - The addon's `family_chores_addon.ha.bridge` consumes events via the `EventProtocol` and makes the actual HTTP `POST /api/events/...` call.
+   - **Architecture test (new):** `tests/test_dependency_arrows.py` at repo root walks every `.py` file under `packages/` and fails if any of them contain `from family_chores_addon`, `from family_chores_saas`, or `import family_chores_addon` / `import family_chores_saas`. This keeps the arrow pointing apps → packages only, permanently.
+
+5. **`scoped()` helper home.** ✅ **Resolved.** `packages/db/src/family_chores_db/scoped.py`.
+
+6. **pnpm migration.** ✅ **Resolved with guardrail.** Migrate to pnpm. If pnpm's strict resolution surfaces undeclared transitive deps during step 1 or step 7, **fix the `package.json` properly** — no `shamefully-hoist-true`, no `public-hoist-pattern=*` escape hatch. Declare every actually-used dep as a direct dep.
+
+7. **User-facing CHANGELOG guidance.** ✅ **Resolved with softer phrasing (option b).** The CHANGELOG paragraph describes a normal HA Supervisor update flow as the default path; uninstall-and-reinstall is named as a *fallback* if the user sees build errors, not the default instruction. Slug-preserves-data note stays.
+
+8. **`backend/` wrapper keep or flatten.** ✅ **Resolved — flatten.** Use `family_chores/src/family_chores_addon/` with `family_chores/pyproject.toml` at the add-on root. No `backend/` wrapper. Rationale: establishes the same `pyproject.toml + src/<pkg>/` shape that `apps/saas-backend/` and future deployment targets will use, making the repo structurally legible across all Python deployment roots. `frontend/` stays as-is because it's genuinely a different kind of thing (pnpm/TypeScript project, not a Python src-layout package).
+
+### Alignment with existing decisions §1–§10
+
+No direct conflicts found. Specifically:
+
+- **§4 #26** (programmatic Alembic config) survives — only the `script_location` path changes.
+- **§4 #29–#33** (rollover / streaks / timezone) are pure-core logic that moves to `packages/core/` unchanged.
+- **§4 #34–#38** (auth / errors / WS) become API-package concerns; the `AuthStrategy` abstraction is a refinement, not a reversal.
+- **§4 #39–#46** (HA bridge) stay inside the add-on at `family_chores/`, just under a renamed package (`family_chores.ha.*` → `family_chores_addon.ha.*`). The `BridgeProtocol` interface in `packages/api/` is new but doesn't contradict any prior decision.
+- **§4 #45** (user-provisioned Local To-do entities via `ha_todo_entity_id`) stays verbatim. The column's home (now `packages/db/`) doesn't change its semantics.
+- **§4 #48–#49** (SPA static mount + `index.html` gate) survive — the static dir just moves with the addon.
+- **§7 "multi-household"** was flagged as "v2 major rewrite." This refactor pays down that cost by adding the `household_id` column and scoping plumbing now, so the eventual switch-on is a migration that flips NOT NULL + a new auth strategy, not a rewrite.
+
+### Stop-line
+
+Plan is drafted. **Pausing here for user review per prompt §11.** Once approved, I'll load `TodoWrite`, create one todo per step (1–13), and start with step 1 (scaffolds + workspace tooling).

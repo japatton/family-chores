@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "family-chores-db"
+version = "0.1.0"
+description = "SQLAlchemy models, Alembic migrations, and DB helpers for Family Chores (see DECISIONS §11)."
+requires-python = ">=3.12"
+authors = [{ name = "Jason Patton" }]
+license = { text = "MIT" }
+# Step 3 will populate these with the full DB stack once models move in.
+# Kept empty at step 1 so the scaffold syncs without pulling real deps.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

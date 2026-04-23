@@ -1,0 +1,41 @@
+################################################################################
+# Family Chores — monorepo workspace root.
+#
+# See DECISIONS §11 for the Phase 2 refactor that introduced this workspace.
+#
+# This is a virtual workspace (uv `package = false`) — the root is purely a
+# workspace coordinator; it produces no distribution of its own. Each workspace
+# member has its own pyproject.toml with its own build backend.
+#
+# Workspace membership evolves across the refactor steps:
+#   - Step 1 (this commit): packages/{core,db,api} + apps/saas-backend scaffolds.
+#   - Step 6: the add-on joins as `family_chores` (pyproject lives at
+#     `family_chores/pyproject.toml` after the `backend/` wrapper is flattened).
+################################################################################
+
+[project]
+name = "family-chores-workspace"
+version = "0"
+description = "Family Chores monorepo workspace root (virtual; see DECISIONS §11)."
+requires-python = ">=3.12"
+
+[tool.uv]
+# Virtual workspace root — no build output of its own.
+package = false
+
+[tool.uv.workspace]
+members = [
+    "packages/core",
+    "packages/db",
+    "packages/api",
+    "apps/saas-backend",
+]
+
+[tool.pytest.ini_options]
+# `importlib` mode is required whenever multiple workspace members each have
+# a top-level `tests/` package — otherwise pytest resolves `tests.test_smoke`
+# to the first `tests/__init__.py` it imports and blows up on collection for
+# the rest. Per-package `pytest` invocations (what CI runs) don't hit this,
+# but root-level aggregate runs do. Setting it here keeps every invocation
+# consistent regardless of cwd.
+addopts = ["--import-mode=importlib"]
