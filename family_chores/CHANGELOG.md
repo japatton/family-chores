@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] — 2026-04-24
+
+### Fixed
+
+- **`config.yaml` `image:` field + `release.yml` v-strip arrived in
+  v0.2.0 but the `v0.2.0` git tag itself was pushed against the
+  pre-fix commit, so the GHCR image was published as `:v0.2.0` while
+  HA Supervisor expected `:0.2.0`. Re-tagging would force-push and
+  invite stale-cache trouble; v0.2.1 is a clean re-cut from the
+  fixed `main` instead. No code change vs the intended v0.2.0 — same
+  refactor, same behaviour, correct tagging end-to-end.
+
 ## [0.2.0] — 2026-04-23
 
 ### Changed
