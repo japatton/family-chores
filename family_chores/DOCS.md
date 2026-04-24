@@ -19,6 +19,9 @@ Home Assistant entities you can use in automations and dashboards.
 | `log_level` | `info` | One of `debug`, `info`, `warning`, `error`. |
 | `week_starts_on` | `monday` | Week-boundary day for `points_this_week`. `monday` or `sunday`. |
 | `sound_default` | `false` | Whether the completion chime is on by default for new browser sessions. |
+| `timezone` | `""` | Optional IANA name (e.g. `America/Los_Angeles`). Empty falls back to Home Assistant's configured timezone, fetched on startup. |
+
+Changes to any option **restart** the add-on.
 
 ## Entities published by the add-on
 
@@ -34,26 +37,52 @@ they are a one-way mirror of its internal database.
 
 Per-member `todo.*` entities must be **user-created** via the Local To-do
 integration (the add-on isn't a HA integration and can't create entities).
-See `INSTALL.md` "HA To-do Setup". Once you map a member to their Local
-To-do entity, Family Chores manages items with `[FC#<id>]` prefixes on
-that list; HA surfaces them on its calendar automatically.
+See [`INSTALL.md`](../INSTALL.md) "HA To-do Setup". Once you map a member to
+their Local To-do entity, Family Chores manages items with `[FC#<id>]`
+prefixes on that list; HA surfaces them on its calendar automatically.
 
-## Lovelace card
+## Dashboard integration
 
-A lightweight Lit card surfaces each member's points, streak, and progress
-on any HA dashboard. The card reads HA entities only — it never talks to
-the add-on's HTTP API. Build and install instructions live in
-[`lovelace-card/README.md`](lovelace-card/README.md).
+Three ways to surface Family Chores on a Home Assistant dashboard.
 
-In short:
-```sh
-cd lovelace-card && npm install && npm run build
+### The bundled Lovelace card
+
+A lightweight Lit card surfaces each member's points, streak, and today's
+progress on any HA dashboard. It reads HA entities only — never the
+add-on's HTTP API. See [`lovelace-card/README.md`](../lovelace-card/README.md)
+for install paths (the easiest is downloading `family-chores-card.js` from
+the [latest GitHub release](https://github.com/japatton/family-chores/releases/latest)
+and dropping it in `/config/www/`).
+
+### Plain entity cards
+
+If you'd rather build your own layout, use the published sensors directly:
+
+```yaml
+type: entities
+title: Chores today
+entities:
+  - sensor.family_chores_alice_points
+  - sensor.family_chores_bob_points
+  - sensor.family_chores_carol_points
 ```
-then copy `dist/family-chores-card.js` to `/config/www/` and register it
-under **Settings → Dashboards → Resources** with URL
-`/local/family-chores-card.js` and type `JavaScript Module`. Add the card
-via the **+ Add Card** picker — it appears as "Family Chores" with a GUI
-editor.
+
+Each sensor's attributes (`points_this_week`, `streak`, `today_progress_pct`)
+are available to template cards and gauges.
+
+### Embed the full Ingress UI
+
+The add-on's web UI is itself a dashboard surface — full kid-mode and
+parent-mode flows. From a Lovelace dashboard:
+
+```yaml
+type: iframe
+url: /hassio/ingress/family_chores
+```
+
+Or use a Picture Element / Button card with a tap-action that navigates to
+`/hassio/ingress/family_chores`. The bundled Lovelace card uses the latter
+pattern by default for its row tap-action.
 
 ## Events fired
 
@@ -65,19 +94,160 @@ editor.
 
 Wire these to `tts.*`, lights, or notifications as you see fit.
 
+## Backup and restore
+
+### What's persisted
+
+All add-on state lives in a single SQLite file at `/data/family_chores.db`
+inside the container, which Home Assistant maps to
+`/usr/share/hassio/addons/data/family_chores/` on the host. Members, chores,
+completions, points, streaks, activity log — all of it lives there. The
+`/data` volume survives:
+
+- Add-on restarts.
+- Add-on **updates** (the slug stays `family_chores` across versions, so HA
+  reuses the same data directory).
+- Container rebuilds.
+
+It does **not** survive an explicit add-on uninstall unless HA's "keep
+add-on data on uninstall" setting is enabled.
+
+### Home Assistant snapshots
+
+Home Assistant's full and partial backup flows include the add-on's `/data`
+volume. To restore: **Settings → System → Backups →** restore the relevant
+backup (the add-on entry under "partial backup" covers the SQLite file).
+
+### The pre-migration safety copy
+
+Before every Alembic migration, the add-on copies `/data/family_chores.db`
+to `/data/family_chores.db.bak`. If a migration fails, restore the backup
+file from `/usr/share/hassio/addons/data/family_chores/` on the host and
+open an issue with the migration log.
+
+The bootstrap also runs an integrity check on every start. A corrupt
+database auto-restores from `family_chores.db.bak` when present; an empty
+new DB is initialised when there's nothing to restore from. Either case
+shows a banner in the UI and surfaces in `/api/info`.
+
+### Manually copying the DB
+
+For an out-of-band snapshot, stop the add-on first (so SQLite isn't
+mid-write), copy the entire
+`/usr/share/hassio/addons/data/family_chores/` directory (including
+`family_chores.db-wal` and `family_chores.db-shm` if present), then
+restart. WAL files contain pending writes — copying just
+`family_chores.db` while the add-on is running gives you a partial
+snapshot.
+
+## Privacy
+
+### What leaves the add-on
+
+Nothing. The add-on only talks to:
+
+1. The local browser of whoever's looking at the UI, over HA Ingress.
+2. The Home Assistant Supervisor, to publish entity state and fire events.
+
+It does not phone home, check for updates against any third-party service,
+fetch remote assets, or send analytics. Updates flow through HA Supervisor
+(which pulls from GHCR) and are explicit, user-initiated actions.
+
+### What's stored on disk
+
+- `family_chores.db` — the SQLite file with all family-member, chore,
+  completion, and activity-log data.
+- `family_chores.db.bak` — pre-migration safety copy (see Backup and
+  restore above).
+- Avatars, if uploaded — stored as Pillow-re-encoded files in the same
+  `/data` directory. EXIF and other metadata is stripped during
+  re-encode.
+
+### What's in the logs
+
+The add-on log is verbose at `info` level (default) and verbose-er at
+`debug`. Care has been taken to keep secrets out:
+
+- Parent PIN hashes are never logged. The PIN itself is hashed with
+  Argon2 before any code path can log it.
+- Parent session JWTs are never logged.
+- The `SUPERVISOR_TOKEN` HA provides on startup is never logged.
+- Avatar file contents are never logged (only paths and counts).
+
+If you're filing a bug report and want to share a log excerpt, check it
+for member display names you'd rather not publish — those are logged at
+`info` level on chore completion.
+
+### Authentication scope
+
+Once a parent unlocks the UI with the PIN, the resulting session token is
+scoped to the browser that requested it (5-minute sliding TTL, extended
+on activity via `/api/auth/refresh`). Closing the browser invalidates the
+session.
+
 ## Troubleshooting
 
-- **Add-on won't start:** check the log for `Integrity check failed` —
-  a corrupt database is auto-restored from `/data/family_chores.db.bak`
-  if one exists; otherwise an empty DB is initialised and the UI shows a
-  banner.
-- **Entities not updating:** the add-on keeps a retry queue for HA REST
-  calls. Check the log for `ha.sync` entries. The periodic reconciler
-  runs every 15 minutes as a safety net.
-- **Ingress panel blank:** the SPA falls back to cached data if the
-  WebSocket drops. A "reconnecting…" pill is shown until it recovers.
+### Add-on won't start
+
+Check the log for `Integrity check failed`. A corrupt database is
+auto-restored from `/data/family_chores.db.bak` if one exists; otherwise
+an empty DB is initialised and the UI shows a banner. If neither case
+applies, look for an Alembic migration error and consult Backup and
+restore above.
+
+### Entities aren't updating in HA
+
+The add-on keeps a retry queue for HA REST calls (cap 1000, drop-oldest).
+Check the log for `ha.sync` entries. A periodic reconciler runs every 15
+minutes as a safety net — if entities are stale longer than that, look
+for HTTP 401s in the log (usually means the manifest's API permissions
+changed) or repeated 5xx responses from Supervisor.
+
+### Ingress panel is blank or stuck on "reconnecting…"
+
+The SPA falls back to cached data if the WebSocket drops, and shows a
+"reconnecting…" pill until it recovers. If it doesn't recover within a
+minute or two:
+
+- Check the add-on is actually running (Settings → Add-ons →
+  Family Chores → status).
+- Hard-refresh the browser (Cmd/Ctrl-Shift-R) to bypass the SPA cache.
+- Check the add-on log for `WebSocket` errors.
+
+### A chore I just added isn't showing up today
+
+Newly-created chores generate today's instances inline — no waiting for
+the midnight rollover. If a chore isn't appearing:
+
+- Confirm it's assigned to a member (Parent → Chores → click the chore →
+  check assignments).
+- Confirm today matches the recurrence rule (a "weekdays" chore created
+  on a Saturday won't surface until Monday).
+- For `every_n_days` chores, check the anchor day — `every 3 days,
+  anchor=Monday` only fires Mon, Thu, Sun, etc.
+
+### Streak counter looks wrong
+
+Streaks count days where the member completed *every* assigned chore.
+Misses break the streak; days with no assigned chores don't break it.
+The Parent → Activity tab shows the per-day chore-completion grid the
+streak is computed from — useful when the count disagrees with what you
+remember.
+
+### Local-Todo items are duplicating or going stale
+
+The reconciler runs every 15 minutes and on startup. Items the add-on
+manages start with `[FC#<id>]`; items without that prefix are left alone.
+If you see duplicates with the prefix:
+
+- Make sure each member is mapped to **exactly one** Local-Todo entity in
+  Parent → Members.
+- If you renamed a Local-Todo entity in HA after mapping, update the
+  member's mapping to the new entity ID.
 
 ## Support
 
-File issues with the add-on log attached. Do not share logs containing any
-`/data/options.json` secrets.
+- **Bug reports:** [open an issue](https://github.com/japatton/family-chores/issues/new?template=bug_report.yml). Attach the add-on log; do not share logs containing any `/data/options.json` secrets.
+- **Feature requests:** read [`docs/roadmap.md`](../docs/roadmap.md) first, then [open one here](https://github.com/japatton/family-chores/issues/new?template=feature_request.yml).
+- **Security reports:** see [`SECURITY.md`](../SECURITY.md). **Not** a public issue.
+- **Usage questions:** [GitHub Discussions](https://github.com/japatton/family-chores/discussions).
