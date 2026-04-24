@@ -471,6 +471,7 @@ Stop and summarize for the human after each.
 - **2026-04-21** — Milestone 6 complete. React 18 + Vite SPA, 245 KB bundle (76 KB gzipped). Added §4 entries #47–#53 covering routing, build output, static mount, typography, theming, state management, and parent-mode refresh. Multi-stage Dockerfile now bakes the SPA at image-build time. Dev scripts (dev_backend.sh, dev_frontend.sh, lint.sh) added. Backend tests unchanged at 218 (SPA has no backend impact; frontend unit tests land in milestone 7 or 8 per `DECISIONS.md`).
 - **2026-04-21** — Milestone 7 complete. SPA polish (Web-Audio chime, member-accent confetti, celebratory all-done screen, burn-in shift, sound toggle) + Lovelace card (`lovelace-card/` workspace, Rollup+Lit, ~26 KB single-file ES module with a GUI editor). Added §4 entries #54–#59. SPA bundle grew 245 KB → 259 KB (+5 KB gzipped) — all confetti. 218 backend tests still pass; both TS surfaces typecheck clean.
 - **2026-04-22** — Milestone 8 complete. Backend clean under `ruff check` + `mypy --strict`; fixed real type bugs (int-of-None in recurrence config validation, `object`-typed HA client, `create_engine` arg) and added proper type annotations to every route handler. Frontend gets Vitest + happy-dom + @testing-library + ESLint flat-config; 25 new unit tests on stores, API client, PinPad, UndoToast, ProgressRing. Added §4 entries #60–#65. `scripts/lint.sh` now mirrors CI. Two GitHub Actions workflows: `ci.yml` (backend + frontend + card) on every PR; `release.yml` on tag builds multi-arch add-on images for amd64/aarch64/armv7 via QEMU, builds the card, attaches everything to a GitHub Release. 243 total tests (218 backend + 25 frontend), all green.
+- **2026-04-23** — Phase 2 monorepo refactor complete (13 steps, commits `1a4e324`..`105325b`). Repo restructured into shared packages (`packages/{core,db,api}`) and thin deployment-target apps (the add-on stays at `family_chores/` per HA Supervisor convention; new scaffolds at `apps/{saas-backend,web}`). Auth identity abstracted behind `AuthStrategy` Protocol with three concrete impls (Ingress / Placeholder / Fake). Every tenant-scoped table gained a nullable `household_id` column + index (migration `0003_add_household_id`); every service threads `household_id` via a new `scoped()` helper — multi-tenancy plumbing in place from routers down to queries, addon path stays byte-identical via `IngressAuthStrategy` returning `None`. Tooling: uv workspace (5 members) + pnpm workspace (4 members); per-package CI matrix with a new `integration-addon` job that builds + boots the Docker image and asserts `/api/health` 200 + `/api/info ha_connected=false`; addon Dockerfile rewritten for repo-root build context with deps-ordered `pip install` (core → db → api → addon) and `pnpm --filter --frozen-lockfile` for the SPA. Tests: **364 total** across all targets — **218 backend baseline preserved exactly**, plus 12 migration tests, 6 scoped-helper unit tests, 5 multi-tenant integration tests via `FakeAuthStrategy` + `dependency_overrides`, 12 saas smoke tests (10 parametrized 501-on-tenant-scoped routes), 80 architecture-test parametrized cases (dep-arrows + packages-clean), and 2 web placeholder tests. Two known multi-tenant follow-ups deferred to `TODO_POST_REFACTOR.md` — `AppConfig.key` and `Member.slug` need composite-PK / composite-UNIQUE migrations before any SaaS row with a non-NULL `household_id` lands. User-facing change: `family_chores/CHANGELOG.md` gains one paragraph directing existing users through a normal HA Supervisor update (uninstall/reinstall as fallback if the build hiccups; slug-preserves-data for `/data/family_chores.db`). Per-step outcome logs in §11 below — note that the commit hashes inside individual step entries are off-by-one because each step amended its own commit to fill in its self-reference, but the *canonical* hash mapping is the per-step list at the top of this entry: step 1 `1a4e324`, step 2 `ead92a6`, step 3 `581bebf`, step 4 `fc1969d`, step 5 `e524c15`, step 6 `d1accc3`, step 7 `b3c3d33`, step 8 `287697b`, step 9 `471eacb`, step 10 `9c2a283`, step 11 `d03ae0d`, step 12 `3a5f55e`, post-12 fix `105325b`.
 
 ---
 
@@ -740,6 +741,37 @@ No direct conflicts found. Specifically:
   - **Test count: 336** (= 333 from step 11 + 3 new: 2 in `test_fake_auth_strategy.py` + 1 net-new arch-test case from the new `py.typed` files). Backend baseline (218) preserved. Frontend 28 untouched. `scripts/lint.sh` exits 0 end-to-end.
   - **TODO_POST_REFACTOR additions:** none. The "addon image needs an `image:` field in `config.yaml` so HA Supervisor pulls from GHCR instead of building locally" topic is mentioned in the Dockerfile header but not added to the post-refactor list — it's a deployment-config decision the owner makes once the GHCR namespace is settled.
 
-### Stop-line
-
-Plan is drafted. **Pausing here for user review per prompt §11.** Once approved, I'll load `TodoWrite`, create one todo per step (1–13), and start with step 1 (scaffolds + workspace tooling).
+- **Step 13 — 2026-04-23, post-fix `105325b`.** Phase 2 close-out. **No new code in this entry** — it's the canonical "everything's done, here's the inventory" record. Outcomes:
+  - **§10 changelog** gained the canonical Phase-2 dated entry with the per-step commit-hash mapping (above the per-step entries below). That entry — not this one — is what future-me should read first when reviewing the refactor.
+  - **Per-step hash drift acknowledged.** Each step entry above has a `commit <hash>` reference that is **one rev behind** the actual commit (because the entry was added in a `--amend` cycle that itself changed the hash). The §10 entry's per-step list is the authoritative mapping. Considered fixing the per-step entries individually but the chain is endless: amending step-N to fix step-N's hash bumps step-N's hash again. Left as-is, with this caveat documented here.
+  - **`TODO_POST_REFACTOR.md` swept.** Two items remain (both surfaced in step 9):
+    - `AppConfig.key` single-column PK can't host multi-tenant rows with the same key — needs composite-PK migration before SaaS lands.
+    - `Member.slug` global UNIQUE can't host two households' `alice`s — needs composite-UNIQUE migration.
+    - Plus one pre-existing cleanup carry-over: `family_chores/tests/conftest.py`'s `sys.path.insert(0, _SRC)` hack is now redundant under uv editable installs but functional; leaving for a separate trivial-cleanup PR.
+  - **Final test inventory:**
+    | Location | Count |
+    |---|---|
+    | `packages/core/tests/` | 57 |
+    | `packages/db/tests/` | 37 (19 model/recovery + 12 migration + 6 scoped-helper) |
+    | `packages/api/tests/` | 2 (FakeAuthStrategy fixture smoke) |
+    | `family_chores/tests/` | 147 (142 addon + 5 multi-tenant integration) |
+    | `apps/saas-backend/tests/` | 12 (1 import + 1 health + 10 parametrized 501) |
+    | `tests/` (architecture) | 81 (49 dep-arrows + 32 packages-clean) |
+    | **Python total** | **336** |
+    | `family_chores/frontend` (vitest) | 26 |
+    | `apps/web` (vitest) | 2 |
+    | `lovelace-card` | typecheck only |
+    | **Frontend total** | **28** |
+    | **Aggregate** | **364** |
+  - **218 backend baseline preserved exactly.** Every test that existed at the start of step 2 still passes; the +118 net-new Python tests are the architecture / migration / scoping / saas-smoke layers added during the refactor.
+  - **Docker validated locally** (post-step-12, `105325b`): `docker build -f family_chores/Dockerfile -t family-chores:local .` from repo root produces a 613 MB / 148 MB-content arm64 image; the container boots, lifespan runs, `/api/health` returns 200 and `/api/info` reports `ha_connected=false` + `bootstrap.action=initialized`. The string-literal `family_chores.app:create_app` reference in `__main__.py` (a step-6 sweep miss) was caught and fixed in the same session — the kind of bug the new `integration-addon` CI job is designed to catch.
+  - **Deviations from the original §11 plan**, full list:
+    1. Add-on stayed at `family_chores/` instead of moving to `apps/addon/` (Q1, decided pre-step-1, layout-asymmetry note).
+    2. Add-on Python source flattened to `family_chores/src/family_chores_addon/` (no `backend/` wrapper) — Q8, decided pre-step-1.
+    3. `RecurrenceType` + `InstanceState` enums extracted to `family_chores_core.enums` to avoid a circular dep (step 2 surprise, not in the original plan).
+    4. `ChoreAssignment` got its own `household_id` (step 8 — junction tables also scoped to avoid join-through-FK).
+    5. `AppConfig.key` PK + `Member.slug` UNIQUE deliberately NOT migrated to composite — deferred to TODO_POST_REFACTOR (step 9).
+    6. PEP 561 `py.typed` markers added to `packages/{core,db,api}` (step 12 — needed for `mypy --strict` to see workspace types).
+    7. `FakeAuthStrategy` duplicated inline in `family_chores/tests/test_household_scoping.py` rather than imported from `packages/api/tests/conftest.py` (pytest's `--import-mode=importlib` doesn't share fixtures across test packages).
+    8. `addon` `image:` field NOT added to `config.yaml` (deferred deployment-config decision; documented in Dockerfile header).
+  - **Phase 2 is closed.** Future SaaS work (Phase 3) starts from the SaaS scaffold + the two TODO_POST_REFACTOR follow-ups, with the architecture tests as the safety net to catch any future drift.
