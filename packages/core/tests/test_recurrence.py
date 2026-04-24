@@ -6,8 +6,8 @@ from datetime import date
 
 import pytest
 
-from family_chores.core.recurrence import dates_due
-from family_chores.db.models import RecurrenceType
+from family_chores_core.enums import RecurrenceType
+from family_chores_core.recurrence import dates_due
 
 # ─── daily / weekday / weekend ────────────────────────────────────────────
 

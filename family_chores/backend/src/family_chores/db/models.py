@@ -34,34 +34,28 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from family_chores.core.time import utcnow
+# `RecurrenceType` and `InstanceState` are *domain* enums — used by both the
+# DB layer (here, to type columns) and `family_chores_core` (to reason about
+# recurrence + streaks). They live in `family_chores_core.enums` so the
+# core ↔ db arrow stays one-way (see DECISIONS §11 step 2). Re-exported here
+# so existing `from family_chores.db.models import RecurrenceType` callsites
+# keep working without a sweep.
+from family_chores_core.enums import InstanceState, RecurrenceType
+
+from family_chores_core.time import utcnow
 from family_chores.db.base import Base
+
+__all__ = ["InstanceState", "RecurrenceType"]  # explicit re-export
 
 # ─── enums ───────────────────────────────────────────────────────────────
 
 
 class DisplayMode(str, enum.Enum):
+    """Member-presentation preference. Stays in db.models — not domain logic."""
+
     KID_LARGE = "kid_large"
     KID_STANDARD = "kid_standard"
     TEEN = "teen"
-
-
-class RecurrenceType(str, enum.Enum):
-    DAILY = "daily"
-    WEEKDAYS = "weekdays"
-    WEEKENDS = "weekends"
-    SPECIFIC_DAYS = "specific_days"
-    EVERY_N_DAYS = "every_n_days"
-    MONTHLY_ON_DATE = "monthly_on_date"
-    ONCE = "once"
-
-
-class InstanceState(str, enum.Enum):
-    PENDING = "pending"
-    DONE_UNAPPROVED = "done_unapproved"
-    DONE = "done"
-    SKIPPED = "skipped"
-    MISSED = "missed"
 
 
 def _display_mode_col() -> SQLEnum:

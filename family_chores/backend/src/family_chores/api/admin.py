@@ -21,7 +21,7 @@ from family_chores.api.schemas import (
     ActivityLogPage,
 )
 from family_chores.config import Options
-from family_chores.core.time import local_today
+from family_chores_core.time import local_today
 from family_chores.db.models import ActivityLog, Member
 from family_chores.ha.bridge import BridgeProtocol
 from family_chores.services.stats_service import recompute_stats_for_member

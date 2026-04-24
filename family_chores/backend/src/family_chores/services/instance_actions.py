@@ -18,7 +18,7 @@ from family_chores.api.errors import (
     NotFoundError,
     UndoWindowExpiredError,
 )
-from family_chores.core.time import utcnow
+from family_chores_core.time import utcnow
 from family_chores.db.models import (
     ActivityLog,
     Chore,

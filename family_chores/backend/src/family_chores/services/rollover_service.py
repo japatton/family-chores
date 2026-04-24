@@ -22,7 +22,7 @@ from datetime import date as date_type
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from family_chores.core.streaks import crossed_milestone
+from family_chores_core.streaks import crossed_milestone
 from family_chores.db.models import MemberStats
 from family_chores.services.instance_service import generate_instances, mark_overdue
 from family_chores.services.stats_service import list_member_ids, recompute_stats_for_member

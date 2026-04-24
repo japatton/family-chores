@@ -16,7 +16,7 @@ from collections.abc import Iterator
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from family_chores.db.models import RecurrenceType
+from family_chores_core.enums import RecurrenceType
 
 _VALID_ISO_WEEKDAYS = frozenset({1, 2, 3, 4, 5, 6, 7})
 

@@ -18,7 +18,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from family_chores.core.time import local_today
+from family_chores_core.time import local_today
 from family_chores.ha.bridge import BridgeProtocol
 from family_chores.ha.client import HAClient
 from family_chores.ha.reconcile import reconcile_once

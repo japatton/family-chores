@@ -317,7 +317,7 @@ class HABridge(BridgeProtocol):
 
     async def _today_progress_pct(self, session: AsyncSession, member_id: int) -> int:
         """Reuse the same query pattern as `/api/today` but for one member."""
-        from family_chores.core.time import utcnow
+        from family_chores_core.time import utcnow
 
         # We don't want to couple to the FastAPI `Options` tz here — use the
         # stored member_stats.week_anchor? No, that's weekly. Use today in

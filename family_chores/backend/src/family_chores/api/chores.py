@@ -30,7 +30,7 @@ from family_chores.api.schemas import (
     validate_recurrence_config,
 )
 from family_chores.config import Options
-from family_chores.core.time import local_today
+from family_chores_core.time import local_today
 from family_chores.db.models import ActivityLog, Chore, Member
 from family_chores.ha.bridge import BridgeProtocol
 from family_chores.security import ParentClaim

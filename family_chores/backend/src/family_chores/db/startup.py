@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from family_chores.core.time import utcnow
+from family_chores_core.time import utcnow
 
 log = logging.getLogger(__name__)
 

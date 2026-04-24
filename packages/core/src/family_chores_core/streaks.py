@@ -16,7 +16,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from datetime import date, timedelta
 
-from family_chores.db.models import InstanceState
+from family_chores_core.enums import InstanceState
 
 STREAK_MILESTONES: tuple[int, ...] = (3, 7, 14, 30, 100)
 

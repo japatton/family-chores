@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from family_chores.core.streaks import (
+from family_chores_core.enums import InstanceState
+from family_chores_core.streaks import (
     STREAK_MILESTONES,
     compute_streak,
     crossed_milestone,
     is_all_done,
 )
-from family_chores.db.models import InstanceState
 
 
 def test_is_all_done_empty_is_false():

@@ -625,6 +625,21 @@ No direct conflicts found. Specifically:
 - **§4 #48–#49** (SPA static mount + `index.html` gate) survive — the static dir just moves with the addon.
 - **§7 "multi-household"** was flagged as "v2 major rewrite." This refactor pays down that cost by adding the `household_id` column and scoping plumbing now, so the eventual switch-on is a migration that flips NOT NULL + a new auth strategy, not a rewrite.
 
+### Step outcomes (running log)
+
+- **Step 1 — 2026-04-23, commit `1a4e324`.** Workspace tooling scaffolded. Two unanticipated bits surfaced and were resolved inline:
+  - The pre-existing `.venv/` was stale and uv didn't editable-install the new workspace members into it; `rm -rf .venv && uv sync --all-packages` recreated it cleanly.
+  - Pytest's default `prepend` import mode collided across the four packages' `tests/test_smoke.py` modules (same module name, different files). Fixed by setting `addopts = ["--import-mode=importlib"]` at the root `pyproject.toml`.
+  - Decided uv's virtual workspace pattern (`tool.uv.package = false` at the root) so the root `[project]` block can stay a stub.
+  - Test count after step 1: 4 stub smoke tests + the existing 218 backend + 25 frontend (untouched).
+
+- **Step 2 — 2026-04-23, commit `77b7986`.** Pure domain logic moved to `packages/core`. **One in-scope architectural fix:** `core.recurrence` and `core.streaks` previously imported `RecurrenceType` / `InstanceState` from `family_chores.db.models`, which (combined with `db.models` importing `core.time.utcnow`) was a package-level circular reference that the new "core has no DB deps" rule forbids. Extracted those two enums to **`family_chores_core.enums`**; `db/models.py` imports them from core and re-exports them under its own namespace so existing addon callsites doing `from family_chores.db.models import RecurrenceType` keep working without a sweep. `DisplayMode` stays in `db.models` — it's a UI preference, not domain logic. Surprises and resolutions:
+  - The workspace `.venv` couldn't run the addon's tests until `family_chores/backend` was enrolled as a temporary uv workspace member (it'll move to `family_chores` in step 6 when the `backend/` wrapper is flattened per Q8). Logged in the root `pyproject.toml` comment.
+  - Aggregate root-level `pytest` runs failed with `'async_generator' has no attribute add_all` until `asyncio_mode = "auto"` was added to the root `[tool.pytest.ini_options]` — pytest only honors the first ini-file walked up from the rootdir, so the addon's own pytest config was being ignored on aggregate runs. Per-package CI runs (which `cd` into a member first) were unaffected.
+  - The addon's `pyproject.toml` gained one workspace dep declaration (`family-chores-core`) plus an explanatory comment; the addon source itself wasn't touched beyond the mechanical import sweep.
+  - Test count after step 2: **218 backend tests still pass**, redistributed as 57 in `packages/core/tests/` (test_recurrence + test_streaks + test_points) + 161 in `family_chores/backend/tests/` + 3 remaining stub smokes (db/api/saas) = 221 Python tests collected at the root. Frontend 25 tests untouched.
+  - Zero `TODO_POST_REFACTOR.md` additions — every drift candidate I noticed (e.g. the pre-existing FastAPI `asyncio.iscoroutinefunction` deprecation warnings on Python 3.14) was either truly out-of-scope or pre-existing and explicitly not a step-2 concern.
+
 ### Stop-line
 
 Plan is drafted. **Pausing here for user review per prompt §11.** Once approved, I'll load `TodoWrite`, create one todo per step (1–13), and start with step 1 (scaffolds + workspace tooling).

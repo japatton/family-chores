@@ -10,6 +10,10 @@ requires-python = ">=3.12"
 authors = [{ name = "Jason Patton" }]
 license = { text = "MIT" }
 dependencies = [
+    # Workspace dep: pure domain logic (recurrence, streaks, points, time).
+    # Added during Phase 2 step 2; the addon's `family_chores.core.*` imports
+    # are being relocated to `family_chores_core.*` in this same commit.
+    "family-chores-core",
     "fastapi>=0.115,<0.116",
     # Plain `uvicorn` + the two optional deps we actually use at runtime.
     # Avoids `uvicorn[standard]`, which pulls `watchfiles` (Rust-based);

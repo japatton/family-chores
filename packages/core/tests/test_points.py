@@ -6,7 +6,7 @@ from datetime import date
 
 import pytest
 
-from family_chores.core.points import needs_week_reset, week_anchor_for
+from family_chores_core.points import needs_week_reset, week_anchor_for
 
 
 def test_week_anchor_monday_on_a_monday():
