@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from family_chores_api.bridge import BridgeProtocol
 from family_chores_api.deps import (
     get_bridge,
+    get_current_household_id,
     get_effective_timezone,
     get_remote_user,
     get_session,
@@ -24,6 +25,7 @@ from family_chores_api.schemas import (
 from family_chores_api.services.stats_service import recompute_stats_for_member
 from family_chores_core.time import local_today
 from family_chores_db.models import ActivityLog, Member
+from family_chores_db.scoped import scoped
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_parent)])
 
@@ -36,14 +38,34 @@ async def rebuild_stats(
     bridge: BridgeProtocol = Depends(get_bridge),
     tz: str = Depends(get_effective_timezone),
     week_starts_on: str = Depends(get_week_starts_on),
+    household_id: str | None = Depends(get_current_household_id),
 ) -> dict[str, int]:
     today = local_today(tz)
-    ids = list((await session.execute(select(Member.id))).scalars().all())
+    ids = list(
+        (
+            await session.execute(
+                select(Member.id).where(scoped(Member.household_id, household_id))
+            )
+        )
+        .scalars()
+        .all()
+    )
     for mid in ids:
         await recompute_stats_for_member(
-            session, mid, today=today, week_starts_on=week_starts_on
+            session,
+            mid,
+            today=today,
+            week_starts_on=week_starts_on,
+            household_id=household_id,
         )
-    session.add(ActivityLog(actor=user, action="stats_rebuilt", payload={"members": len(ids)}))
+    session.add(
+        ActivityLog(
+            actor=user,
+            action="stats_rebuilt",
+            payload={"members": len(ids)},
+            household_id=household_id,
+        )
+    )
     await session.commit()
     for mid in ids:
         bridge.notify_member_dirty(mid)
@@ -58,9 +80,18 @@ async def list_activity(
     offset: int = Query(0, ge=0),
     action: str | None = None,
     session: AsyncSession = Depends(get_session),
+    household_id: str | None = Depends(get_current_household_id),
 ) -> ActivityLogPage:
-    count_stmt = select(func.count()).select_from(ActivityLog)
-    stmt = select(ActivityLog).order_by(ActivityLog.ts.desc(), ActivityLog.id.desc())
+    count_stmt = (
+        select(func.count())
+        .select_from(ActivityLog)
+        .where(scoped(ActivityLog.household_id, household_id))
+    )
+    stmt = (
+        select(ActivityLog)
+        .where(scoped(ActivityLog.household_id, household_id))
+        .order_by(ActivityLog.ts.desc(), ActivityLog.id.desc())
+    )
     if action is not None:
         count_stmt = count_stmt.where(ActivityLog.action == action)
         stmt = stmt.where(ActivityLog.action == action)

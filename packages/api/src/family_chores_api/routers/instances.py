@@ -19,8 +19,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from family_chores_api.bridge import BridgeProtocol
 from family_chores_api.deps import (
     get_bridge,
+    get_current_household_id,
     get_effective_timezone,
     get_remote_user,
     get_session,
@@ -39,14 +41,6 @@ from family_chores_api.schemas import (
     TodayMember,
     TodayView,
 )
-from family_chores_core.time import local_today
-from family_chores_db.models import (
-    Chore,
-    ChoreInstance,
-    InstanceState,
-    Member,
-)
-from family_chores_api.bridge import BridgeProtocol
 from family_chores_api.security import ParentClaim
 from family_chores_api.services.instance_actions import (
     adjust_member_points,
@@ -57,6 +51,14 @@ from family_chores_api.services.instance_actions import (
     undo_complete,
 )
 from family_chores_api.services.stats_service import recompute_stats_for_member
+from family_chores_core.time import local_today
+from family_chores_db.models import (
+    Chore,
+    ChoreInstance,
+    InstanceState,
+    Member,
+)
+from family_chores_db.scoped import scoped
 
 router = APIRouter(prefix="/api", tags=["instances"])
 
@@ -76,8 +78,13 @@ async def list_instances(
     to: date_type | None = None,
     limit: int = Query(200, ge=1, le=1000),
     session: AsyncSession = Depends(get_session),
+    household_id: str | None = Depends(get_current_household_id),
 ) -> list[InstanceRead]:
-    stmt = select(ChoreInstance).order_by(ChoreInstance.date.desc(), ChoreInstance.id.desc())
+    stmt = (
+        select(ChoreInstance)
+        .where(scoped(ChoreInstance.household_id, household_id))
+        .order_by(ChoreInstance.date.desc(), ChoreInstance.id.desc())
+    )
     if member_id is not None:
         stmt = stmt.where(ChoreInstance.member_id == member_id)
     if chore_id is not None:
@@ -95,9 +102,17 @@ async def list_instances(
 
 @_instance_router.get("/{instance_id}", response_model=InstanceRead)
 async def get_instance(
-    instance_id: int, session: AsyncSession = Depends(get_session)
+    instance_id: int,
+    session: AsyncSession = Depends(get_session),
+    household_id: str | None = Depends(get_current_household_id),
 ) -> InstanceRead:
-    inst = await session.get(ChoreInstance, instance_id)
+    res = await session.execute(
+        select(ChoreInstance).where(
+            ChoreInstance.id == instance_id,
+            scoped(ChoreInstance.household_id, household_id),
+        )
+    )
+    inst = res.scalar_one_or_none()
     if inst is None:
         raise NotFoundError(f"instance {instance_id} not found")
     return InstanceRead.model_validate(inst)
@@ -109,10 +124,15 @@ async def _finalize_action(
     *,
     week_starts_on: str,
     tz: str,
+    household_id: str | None,
 ) -> None:
     today = local_today(tz)
     await recompute_stats_for_member(
-        session, inst.member_id, today=today, week_starts_on=week_starts_on
+        session,
+        inst.member_id,
+        today=today,
+        week_starts_on=week_starts_on,
+        household_id=household_id,
     )
     await session.commit()
 
@@ -161,9 +181,14 @@ async def complete(
     bridge: BridgeProtocol = Depends(get_bridge),
     week_starts_on: str = Depends(get_week_starts_on),
     tz: str = Depends(get_effective_timezone),
+    household_id: str | None = Depends(get_current_household_id),
 ) -> InstanceRead:
-    inst = await complete_instance(session, instance_id, actor=user)
-    await _finalize_action(session, inst, week_starts_on=week_starts_on, tz=tz)
+    inst = await complete_instance(
+        session, instance_id, actor=user, household_id=household_id
+    )
+    await _finalize_action(
+        session, inst, week_starts_on=week_starts_on, tz=tz, household_id=household_id
+    )
     event = EVENT_COMPLETED if inst.state is InstanceState.DONE else None
     _notify_bridge(bridge, inst, event=event)
     await _broadcast_updated(ws, inst)
@@ -179,9 +204,12 @@ async def undo(
     bridge: BridgeProtocol = Depends(get_bridge),
     week_starts_on: str = Depends(get_week_starts_on),
     tz: str = Depends(get_effective_timezone),
+    household_id: str | None = Depends(get_current_household_id),
 ) -> InstanceRead:
-    inst = await undo_complete(session, instance_id, actor=user)
-    await _finalize_action(session, inst, week_starts_on=week_starts_on, tz=tz)
+    inst = await undo_complete(session, instance_id, actor=user, household_id=household_id)
+    await _finalize_action(
+        session, inst, week_starts_on=week_starts_on, tz=tz, household_id=household_id
+    )
     _notify_bridge(bridge, inst)
     await _broadcast_updated(ws, inst)
     return InstanceRead.model_validate(inst)
@@ -196,10 +224,15 @@ async def approve(
     bridge: BridgeProtocol = Depends(get_bridge),
     week_starts_on: str = Depends(get_week_starts_on),
     tz: str = Depends(get_effective_timezone),
+    household_id: str | None = Depends(get_current_household_id),
     _parent: ParentClaim = Depends(require_parent),
 ) -> InstanceRead:
-    inst = await approve_instance(session, instance_id, actor=user)
-    await _finalize_action(session, inst, week_starts_on=week_starts_on, tz=tz)
+    inst = await approve_instance(
+        session, instance_id, actor=user, household_id=household_id
+    )
+    await _finalize_action(
+        session, inst, week_starts_on=week_starts_on, tz=tz, household_id=household_id
+    )
     _notify_bridge(bridge, inst, event=EVENT_APPROVED)
     await _broadcast_updated(ws, inst)
     return InstanceRead.model_validate(inst)
@@ -215,10 +248,15 @@ async def reject(
     bridge: BridgeProtocol = Depends(get_bridge),
     week_starts_on: str = Depends(get_week_starts_on),
     tz: str = Depends(get_effective_timezone),
+    household_id: str | None = Depends(get_current_household_id),
     _parent: ParentClaim = Depends(require_parent),
 ) -> InstanceRead:
-    inst = await reject_instance(session, instance_id, actor=user, reason=body.reason)
-    await _finalize_action(session, inst, week_starts_on=week_starts_on, tz=tz)
+    inst = await reject_instance(
+        session, instance_id, actor=user, reason=body.reason, household_id=household_id
+    )
+    await _finalize_action(
+        session, inst, week_starts_on=week_starts_on, tz=tz, household_id=household_id
+    )
     _notify_bridge(bridge, inst)
     await _broadcast_updated(ws, inst)
     return InstanceRead.model_validate(inst)
@@ -234,10 +272,15 @@ async def skip(
     bridge: BridgeProtocol = Depends(get_bridge),
     week_starts_on: str = Depends(get_week_starts_on),
     tz: str = Depends(get_effective_timezone),
+    household_id: str | None = Depends(get_current_household_id),
     _parent: ParentClaim = Depends(require_parent),
 ) -> InstanceRead:
-    inst = await skip_instance(session, instance_id, actor=user, reason=body.reason)
-    await _finalize_action(session, inst, week_starts_on=week_starts_on, tz=tz)
+    inst = await skip_instance(
+        session, instance_id, actor=user, reason=body.reason, household_id=household_id
+    )
+    await _finalize_action(
+        session, inst, week_starts_on=week_starts_on, tz=tz, household_id=household_id
+    )
     _notify_bridge(bridge, inst)
     await _broadcast_updated(ws, inst)
     return InstanceRead.model_validate(inst)
@@ -256,10 +299,16 @@ async def adjust_points(
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
     bridge: BridgeProtocol = Depends(get_bridge),
+    household_id: str | None = Depends(get_current_household_id),
     _parent: ParentClaim = Depends(require_parent),
 ) -> MemberStatsRead:
     stats = await adjust_member_points(
-        session, member_id, actor=user, delta=body.delta, reason=body.reason
+        session,
+        member_id,
+        actor=user,
+        delta=body.delta,
+        reason=body.reason,
+        household_id=household_id,
     )
     await session.commit()
     bridge.notify_member_dirty(member_id)
@@ -282,11 +331,15 @@ _today_router = APIRouter()
 async def today_view(
     tz: str = Depends(get_effective_timezone),
     session: AsyncSession = Depends(get_session),
+    household_id: str | None = Depends(get_current_household_id),
 ) -> TodayView:
     today = local_today(tz)
 
     member_result = await session.execute(
-        select(Member).options(selectinload(Member.stats)).order_by(Member.name)
+        select(Member)
+        .where(scoped(Member.household_id, household_id))
+        .options(selectinload(Member.stats))
+        .order_by(Member.name)
     )
     members = list(member_result.scalars().all())
     if not members:
@@ -296,6 +349,7 @@ async def today_view(
         select(ChoreInstance, Chore)
         .join(Chore, Chore.id == ChoreInstance.chore_id)
         .where(ChoreInstance.date == today)
+        .where(scoped(ChoreInstance.household_id, household_id))
         .order_by(Chore.name)
     )
     rows = inst_result.all()

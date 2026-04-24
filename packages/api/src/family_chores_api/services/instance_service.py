@@ -3,6 +3,11 @@
 Both operations are **idempotent**: running them twice on the same day is
 a no-op the second time, and running them on startup (as the lifespan
 catch-up) produces the same state as running them at midnight.
+
+Tenant scope (step 9): every query takes `household_id: str | None` and
+filters via `scoped()`. The add-on path passes `None`. Newly-created
+ChoreInstance rows inherit `household_id` from the parameter, so a SaaS
+mutation only ever creates rows in its own household.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ from sqlalchemy.orm import selectinload
 
 from family_chores_core.recurrence import dates_due
 from family_chores_db.models import Chore, ChoreInstance, InstanceState
+from family_chores_db.scoped import scoped
 
 INSTANCE_HORIZON_DAYS = 14
 
@@ -25,6 +31,7 @@ async def generate_instances(
     *,
     today: date,
     horizon_days: int = INSTANCE_HORIZON_DAYS,
+    household_id: str | None = None,
 ) -> int:
     """Ensure a `ChoreInstance` row exists for every `(chore, member, date)`
     tuple that the recurrence rules require in `[today, today+horizon_days]`.
@@ -37,6 +44,7 @@ async def generate_instances(
     chore_result = await session.execute(
         select(Chore)
         .where(Chore.active.is_(True))
+        .where(scoped(Chore.household_id, household_id))
         .options(selectinload(Chore.assigned_members))
     )
     chores: Sequence[Chore] = chore_result.scalars().all()
@@ -45,6 +53,7 @@ async def generate_instances(
         select(ChoreInstance.chore_id, ChoreInstance.member_id, ChoreInstance.date)
         .where(ChoreInstance.date >= today)
         .where(ChoreInstance.date <= end)
+        .where(scoped(ChoreInstance.household_id, household_id))
     )
     existing: set[tuple[int, int, date]] = {tuple(row) for row in existing_result.all()}
 
@@ -59,7 +68,12 @@ async def generate_instances(
                 if key in existing:
                     continue
                 new_rows.append(
-                    ChoreInstance(chore_id=chore.id, member_id=member.id, date=d)
+                    ChoreInstance(
+                        chore_id=chore.id,
+                        member_id=member.id,
+                        date=d,
+                        household_id=household_id,
+                    )
                 )
                 existing.add(key)
 
@@ -69,7 +83,9 @@ async def generate_instances(
     return len(new_rows)
 
 
-async def mark_overdue(session: AsyncSession, *, today: date) -> int:
+async def mark_overdue(
+    session: AsyncSession, *, today: date, household_id: str | None = None
+) -> int:
     """Mark every `pending` or `done_unapproved` instance with `date < today`
     as `missed`. Returns the number of rows updated.
 
@@ -84,6 +100,7 @@ async def mark_overdue(session: AsyncSession, *, today: date) -> int:
                 [InstanceState.PENDING, InstanceState.DONE_UNAPPROVED]
             )
         )
+        .where(scoped(ChoreInstance.household_id, household_id))
     )
     instances = list(result.scalars().all())
     for inst in instances:

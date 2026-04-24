@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from family_chores_api.deps import (
+    get_current_household_id,
     get_jwt_secret,
     get_remote_user,
     get_session,
@@ -26,7 +27,6 @@ from family_chores_api.schemas import (
     VerifyPinRequest,
     WhoAmI,
 )
-from family_chores_db.models import ActivityLog
 from family_chores_api.security import (
     ParentClaim,
     clear_pin_hash,
@@ -36,6 +36,7 @@ from family_chores_api.security import (
     set_pin_hash,
     verify_pin,
 )
+from family_chores_db.models import ActivityLog
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -45,8 +46,9 @@ async def whoami(
     user: str = Depends(get_remote_user),
     claim: ParentClaim | None = Depends(maybe_parent),
     session: AsyncSession = Depends(get_session),
+    household_id: str | None = Depends(get_current_household_id),
 ) -> WhoAmI:
-    pin_hash = await get_pin_hash(session)
+    pin_hash = await get_pin_hash(session, household_id=household_id)
     return WhoAmI(
         user=user,
         parent_pin_set=pin_hash is not None,
@@ -60,8 +62,9 @@ async def set_pin(
     user: str = Depends(get_remote_user),
     session: AsyncSession = Depends(get_session),
     ws: WSManager = Depends(get_ws_manager),
+    household_id: str | None = Depends(get_current_household_id),
 ) -> WhoAmI:
-    current_hash = await get_pin_hash(session)
+    current_hash = await get_pin_hash(session, household_id=household_id)
 
     # If a PIN is already set, the caller must prove they know the current one.
     if current_hash is not None:
@@ -70,8 +73,10 @@ async def set_pin(
         if not verify_pin(body.current_pin, current_hash):
             raise PinInvalidError("current PIN incorrect")
 
-    await set_pin_hash(session, hash_pin(body.pin))
-    session.add(ActivityLog(actor=user, action="pin_set", payload={}))
+    await set_pin_hash(session, hash_pin(body.pin), household_id=household_id)
+    session.add(
+        ActivityLog(actor=user, action="pin_set", payload={}, household_id=household_id)
+    )
     await session.commit()
     await ws.broadcast({"type": EVT_PIN_SET})
     return WhoAmI(user=user, parent_pin_set=True, parent_mode_active=False)
@@ -83,8 +88,9 @@ async def verify(
     user: str = Depends(get_remote_user),
     session: AsyncSession = Depends(get_session),
     secret: str = Depends(get_jwt_secret),
+    household_id: str | None = Depends(get_current_household_id),
 ) -> TokenResponse:
-    pin_hash = await get_pin_hash(session)
+    pin_hash = await get_pin_hash(session, household_id=household_id)
     if pin_hash is None:
         raise PinNotSetError("no PIN is set; call /api/auth/pin/set first")
     if not verify_pin(body.pin, pin_hash):
@@ -113,14 +119,17 @@ async def clear_pin(
     user: str = Depends(get_remote_user),
     session: AsyncSession = Depends(get_session),
     ws: WSManager = Depends(get_ws_manager),
+    household_id: str | None = Depends(get_current_household_id),
 ) -> WhoAmI:
-    pin_hash = await get_pin_hash(session)
+    pin_hash = await get_pin_hash(session, household_id=household_id)
     if pin_hash is None:
         raise PinNotSetError("no PIN is set")
     if not verify_pin(body.pin, pin_hash):
         raise PinInvalidError("incorrect PIN")
-    await clear_pin_hash(session)
-    session.add(ActivityLog(actor=user, action="pin_cleared", payload={}))
+    await clear_pin_hash(session, household_id=household_id)
+    session.add(
+        ActivityLog(actor=user, action="pin_cleared", payload={}, household_id=household_id)
+    )
     await session.commit()
     await ws.broadcast({"type": EVT_PIN_CLEARED})
     return WhoAmI(user=user, parent_pin_set=False, parent_mode_active=False)

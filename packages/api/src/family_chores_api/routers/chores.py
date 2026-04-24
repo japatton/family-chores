@@ -7,8 +7,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from family_chores_api.bridge import BridgeProtocol
 from family_chores_api.deps import (
     get_bridge,
+    get_current_household_id,
     get_effective_timezone,
     get_remote_user,
     get_session,
@@ -28,11 +30,11 @@ from family_chores_api.schemas import (
     ChoreUpdate,
     validate_recurrence_config,
 )
-from family_chores_core.time import local_today
-from family_chores_db.models import ActivityLog, Chore, Member
-from family_chores_api.bridge import BridgeProtocol
 from family_chores_api.security import ParentClaim
 from family_chores_api.services.instance_service import generate_instances
+from family_chores_core.time import local_today
+from family_chores_db.models import ActivityLog, Chore, Member
+from family_chores_db.scoped import scoped
 
 router = APIRouter(prefix="/api/chores", tags=["chores"])
 
@@ -54,10 +56,12 @@ def _to_read(chore: Chore) -> ChoreRead:
     )
 
 
-async def _load_with_members(session: AsyncSession, chore_id: int) -> Chore:
+async def _load_with_members(
+    session: AsyncSession, chore_id: int, household_id: str | None
+) -> Chore:
     result = await session.execute(
         select(Chore)
-        .where(Chore.id == chore_id)
+        .where(Chore.id == chore_id, scoped(Chore.household_id, household_id))
         .options(selectinload(Chore.assigned_members))
     )
     chore = result.scalar_one_or_none()
@@ -66,10 +70,16 @@ async def _load_with_members(session: AsyncSession, chore_id: int) -> Chore:
     return chore
 
 
-async def _resolve_members(session: AsyncSession, ids: list[int]) -> list[Member]:
+async def _resolve_members(
+    session: AsyncSession, ids: list[int], household_id: str | None
+) -> list[Member]:
     if not ids:
         return []
-    result = await session.execute(select(Member).where(Member.id.in_(ids)))
+    result = await session.execute(
+        select(Member).where(
+            Member.id.in_(ids), scoped(Member.household_id, household_id)
+        )
+    )
     members = result.scalars().all()
     found = {m.id for m in members}
     missing = [i for i in ids if i not in found]
@@ -83,8 +93,14 @@ async def list_chores(
     active: bool | None = None,
     member_id: int | None = None,
     session: AsyncSession = Depends(get_session),
+    household_id: str | None = Depends(get_current_household_id),
 ) -> list[ChoreRead]:
-    stmt = select(Chore).options(selectinload(Chore.assigned_members)).order_by(Chore.name)
+    stmt = (
+        select(Chore)
+        .where(scoped(Chore.household_id, household_id))
+        .options(selectinload(Chore.assigned_members))
+        .order_by(Chore.name)
+    )
     if active is not None:
         stmt = stmt.where(Chore.active.is_(active))
     if member_id is not None:
@@ -94,8 +110,12 @@ async def list_chores(
 
 
 @router.get("/{chore_id}", response_model=ChoreRead)
-async def get_chore(chore_id: int, session: AsyncSession = Depends(get_session)) -> ChoreRead:
-    return _to_read(await _load_with_members(session, chore_id))
+async def get_chore(
+    chore_id: int,
+    session: AsyncSession = Depends(get_session),
+    household_id: str | None = Depends(get_current_household_id),
+) -> ChoreRead:
+    return _to_read(await _load_with_members(session, chore_id, household_id))
 
 
 @router.post("", response_model=ChoreRead, status_code=status.HTTP_201_CREATED)
@@ -106,9 +126,10 @@ async def create_chore(
     ws: WSManager = Depends(get_ws_manager),
     bridge: BridgeProtocol = Depends(get_bridge),
     tz: str = Depends(get_effective_timezone),
+    household_id: str | None = Depends(get_current_household_id),
     _parent: ParentClaim = Depends(require_parent),
 ) -> ChoreRead:
-    members = await _resolve_members(session, body.assigned_member_ids)
+    members = await _resolve_members(session, body.assigned_member_ids, household_id)
     chore = Chore(
         name=body.name,
         icon=body.icon,
@@ -120,6 +141,7 @@ async def create_chore(
         recurrence_config=body.recurrence_config,
         time_window_start=body.time_window_start,
         time_window_end=body.time_window_end,
+        household_id=household_id,
     )
     chore.assigned_members = members
     session.add(chore)
@@ -129,16 +151,17 @@ async def create_chore(
             actor=user,
             action="chore_created",
             payload={"id": chore.id, "name": chore.name},
+            household_id=household_id,
         )
     )
     # So today's instance exists the moment the chore is created — users
     # shouldn't have to wait for midnight rollover to see their new chore.
-    await generate_instances(session, today=local_today(tz))
+    await generate_instances(session, today=local_today(tz), household_id=household_id)
     await session.commit()
     for m in members:
         bridge.notify_member_dirty(m.id)
     await ws.broadcast({"type": EVT_CHORE_CREATED, "chore_id": chore.id})
-    chore = await _load_with_members(session, chore.id)
+    chore = await _load_with_members(session, chore.id, household_id)
     return _to_read(chore)
 
 
@@ -151,9 +174,10 @@ async def update_chore(
     ws: WSManager = Depends(get_ws_manager),
     bridge: BridgeProtocol = Depends(get_bridge),
     tz: str = Depends(get_effective_timezone),
+    household_id: str | None = Depends(get_current_household_id),
     _parent: ParentClaim = Depends(require_parent),
 ) -> ChoreRead:
-    chore = await _load_with_members(session, chore_id)
+    chore = await _load_with_members(session, chore_id, household_id)
 
     updates = body.model_dump(exclude_unset=True)
 
@@ -175,7 +199,7 @@ async def update_chore(
         changes[field_name] = value
 
     if assignment_ids is not None:
-        members = await _resolve_members(session, assignment_ids)
+        members = await _resolve_members(session, assignment_ids, household_id)
         chore.assigned_members = members
         changes["assigned_member_ids"] = sorted(m.id for m in members)
 
@@ -185,13 +209,14 @@ async def update_chore(
                 actor=user,
                 action="chore_updated",
                 payload={"id": chore.id, "changes": changes},
+                household_id=household_id,
             )
         )
     # Regenerate so new assignments / newly-active chores get today-onwards
     # instances without waiting for the midnight rollover.
-    await generate_instances(session, today=local_today(tz))
+    await generate_instances(session, today=local_today(tz), household_id=household_id)
     await session.commit()
-    chore = await _load_with_members(session, chore.id)
+    chore = await _load_with_members(session, chore.id, household_id)
     for m in chore.assigned_members:
         bridge.notify_member_dirty(m.id)
     await ws.broadcast({"type": EVT_CHORE_UPDATED, "chore_id": chore.id})
@@ -212,15 +237,17 @@ async def delete_chore(
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
     bridge: BridgeProtocol = Depends(get_bridge),
+    household_id: str | None = Depends(get_current_household_id),
     _parent: ParentClaim = Depends(require_parent),
 ) -> None:
-    chore = await _load_with_members(session, chore_id)
+    chore = await _load_with_members(session, chore_id, household_id)
     affected_member_ids = [m.id for m in chore.assigned_members]
     session.add(
         ActivityLog(
             actor=user,
             action="chore_deleted",
             payload={"id": chore.id, "name": chore.name},
+            household_id=household_id,
         )
     )
     await session.delete(chore)

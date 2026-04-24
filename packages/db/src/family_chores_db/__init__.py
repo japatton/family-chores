@@ -20,6 +20,7 @@ from family_chores_db.base import (
     make_session_factory,
     make_sync_db_url,
 )
+from family_chores_db.scoped import scoped
 
 __all__ = [
     "Base",
@@ -28,4 +29,5 @@ __all__ = [
     "make_session_factory",
     "make_sync_db_url",
     "models",
+    "scoped",
 ]

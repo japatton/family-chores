@@ -4,6 +4,11 @@ Stats are a cache — everything in `member_stats` is derivable from
 `chore_instances`. We recompute the whole thing at each rollover rather than
 maintaining incremental invariants, because the dataset is tiny (family
 scale) and correctness is trivially obvious this way.
+
+Tenant scope (step 9): every query takes `household_id: str | None` and
+filters via `scoped()`. The add-on path passes `None` (queries return
+NULL-household rows, byte-identical to pre-step-9). The future SaaS
+passes a household uuid (queries return only that household's rows).
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from family_chores_core.points import week_anchor_for
 from family_chores_core.streaks import compute_streak
 from family_chores_db.models import ChoreInstance, InstanceState, Member, MemberStats
+from family_chores_db.scoped import scoped
 
 
 async def recompute_stats_for_member(
@@ -25,14 +31,27 @@ async def recompute_stats_for_member(
     today: date,
     week_starts_on: str,
     streak_lookback_days: int = 365,
+    household_id: str | None = None,
 ) -> MemberStats:
-    stats = await session.get(MemberStats, member_id)
+    # `session.get` doesn't accept WHERE clauses, so we fetch via select
+    # to scope the lookup. A row whose household_id doesn't match returns
+    # None, which matches the pre-step-9 "stats not yet built" branch.
+    stats_res = await session.execute(
+        select(MemberStats).where(
+            MemberStats.member_id == member_id,
+            scoped(MemberStats.household_id, household_id),
+        )
+    )
+    stats = stats_res.scalar_one_or_none()
     if stats is None:
-        stats = MemberStats(member_id=member_id)
+        stats = MemberStats(member_id=member_id, household_id=household_id)
         session.add(stats)
 
     total_res = await session.execute(
-        select(ChoreInstance.points_awarded).where(ChoreInstance.member_id == member_id)
+        select(ChoreInstance.points_awarded).where(
+            ChoreInstance.member_id == member_id,
+            scoped(ChoreInstance.household_id, household_id),
+        )
     )
     stats.points_total = sum(total_res.scalars().all())
 
@@ -42,6 +61,7 @@ async def recompute_stats_for_member(
         .where(ChoreInstance.member_id == member_id)
         .where(ChoreInstance.date >= this_anchor)
         .where(ChoreInstance.date <= today)
+        .where(scoped(ChoreInstance.household_id, household_id))
     )
     stats.points_this_week = sum(week_res.scalars().all())
     stats.week_anchor = this_anchor
@@ -58,6 +78,7 @@ async def recompute_stats_for_member(
         .where(ChoreInstance.member_id == member_id)
         .where(ChoreInstance.date <= streak_as_of)
         .where(ChoreInstance.date >= window_start)
+        .where(scoped(ChoreInstance.household_id, household_id))
     )
     states_by_date: dict[date, list[InstanceState]] = {}
     for d, s in states_res.all():
@@ -76,6 +97,10 @@ async def recompute_stats_for_member(
     return stats
 
 
-async def list_member_ids(session: AsyncSession) -> list[int]:
-    res = await session.execute(select(Member.id))
+async def list_member_ids(
+    session: AsyncSession, *, household_id: str | None = None
+) -> list[int]:
+    res = await session.execute(
+        select(Member.id).where(scoped(Member.household_id, household_id))
+    )
     return list(res.scalars().all())

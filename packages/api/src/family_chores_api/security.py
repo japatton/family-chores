@@ -33,9 +33,11 @@ from typing import Any, cast
 import jwt
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from family_chores_db.models import AppConfig
+from family_chores_db.scoped import scoped
 
 _hasher = PasswordHasher()
 
@@ -80,38 +82,74 @@ def verify_pin(pin: str, hashed: str) -> bool:
         return False
 
 
-async def ensure_jwt_secret(session: AsyncSession) -> str:
+async def _get_app_config(
+    session: AsyncSession, key: str, household_id: str | None
+) -> AppConfig | None:
+    """Tenant-scoped lookup of an `app_config` row by key.
+
+    `session.get(AppConfig, key)` would ignore household_id (PK is just
+    `key`), which is wrong post-step-9. Use a scoped select instead.
+
+    NB: `AppConfig`'s PK is still single-column `key`, so two households
+    can't both store a row with the same key — that's a known follow-up
+    (TODO_POST_REFACTOR.md) to be addressed when the SaaS lands. For
+    single-tenant add-on mode (household_id=None) this is a non-issue
+    because every row's household_id is also NULL.
+    """
+    res = await session.execute(
+        select(AppConfig).where(
+            AppConfig.key == key, scoped(AppConfig.household_id, household_id)
+        )
+    )
+    return res.scalar_one_or_none()
+
+
+async def ensure_jwt_secret(
+    session: AsyncSession, *, household_id: str | None = None
+) -> str:
     """Mint a JWT secret on first ever boot, otherwise return the stored one.
 
     Idempotent: always commits if a secret was just minted, otherwise reads.
     """
-    row = await session.get(AppConfig, JWT_SECRET_KEY)
+    row = await _get_app_config(session, JWT_SECRET_KEY, household_id)
     if row is None:
         secret = secrets.token_urlsafe(32)
-        session.add(AppConfig(key=JWT_SECRET_KEY, value=secret))
+        session.add(
+            AppConfig(key=JWT_SECRET_KEY, value=secret, household_id=household_id)
+        )
         await session.commit()
         return secret
     return cast(str, row.value)
 
 
-async def get_pin_hash(session: AsyncSession) -> str | None:
-    row = await session.get(AppConfig, PARENT_PIN_HASH_KEY)
+async def get_pin_hash(
+    session: AsyncSession, *, household_id: str | None = None
+) -> str | None:
+    row = await _get_app_config(session, PARENT_PIN_HASH_KEY, household_id)
     if row is None:
         return None
     return cast(str, row.value)
 
 
-async def set_pin_hash(session: AsyncSession, pin_hash: str) -> None:
-    row = await session.get(AppConfig, PARENT_PIN_HASH_KEY)
+async def set_pin_hash(
+    session: AsyncSession, pin_hash: str, *, household_id: str | None = None
+) -> None:
+    row = await _get_app_config(session, PARENT_PIN_HASH_KEY, household_id)
     if row is None:
-        session.add(AppConfig(key=PARENT_PIN_HASH_KEY, value=pin_hash))
+        session.add(
+            AppConfig(
+                key=PARENT_PIN_HASH_KEY, value=pin_hash, household_id=household_id
+            )
+        )
     else:
         row.value = pin_hash
     await session.flush()
 
 
-async def clear_pin_hash(session: AsyncSession) -> None:
-    row = await session.get(AppConfig, PARENT_PIN_HASH_KEY)
+async def clear_pin_hash(
+    session: AsyncSession, *, household_id: str | None = None
+) -> None:
+    row = await _get_app_config(session, PARENT_PIN_HASH_KEY, household_id)
     if row is not None:
         await session.delete(row)
         await session.flush()

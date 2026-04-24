@@ -7,8 +7,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from family_chores_api.bridge import BridgeProtocol
 from family_chores_api.deps import (
     get_bridge,
+    get_current_household_id,
     get_remote_user,
     get_session,
     get_ws_manager,
@@ -27,9 +29,9 @@ from family_chores_api.schemas import (
     MemberStatsRead,
     MemberUpdate,
 )
-from family_chores_db.models import ActivityLog, Member, MemberStats
-from family_chores_api.bridge import BridgeProtocol
 from family_chores_api.security import ParentClaim
+from family_chores_db.models import ActivityLog, Member, MemberStats
+from family_chores_db.scoped import scoped
 
 router = APIRouter(prefix="/api/members", tags=["members"])
 
@@ -55,9 +57,13 @@ def _to_read(member: Member, stats: MemberStats | None) -> MemberRead:
     )
 
 
-async def _load_by_slug(session: AsyncSession, slug: str) -> Member:
+async def _load_by_slug(
+    session: AsyncSession, slug: str, household_id: str | None
+) -> Member:
     result = await session.execute(
-        select(Member).where(Member.slug == slug).options(selectinload(Member.stats))
+        select(Member)
+        .where(Member.slug == slug, scoped(Member.household_id, household_id))
+        .options(selectinload(Member.stats))
     )
     member = result.scalar_one_or_none()
     if member is None:
@@ -66,16 +72,26 @@ async def _load_by_slug(session: AsyncSession, slug: str) -> Member:
 
 
 @router.get("", response_model=list[MemberRead])
-async def list_members(session: AsyncSession = Depends(get_session)) -> list[MemberRead]:
+async def list_members(
+    session: AsyncSession = Depends(get_session),
+    household_id: str | None = Depends(get_current_household_id),
+) -> list[MemberRead]:
     result = await session.execute(
-        select(Member).options(selectinload(Member.stats)).order_by(Member.name)
+        select(Member)
+        .where(scoped(Member.household_id, household_id))
+        .options(selectinload(Member.stats))
+        .order_by(Member.name)
     )
     return [_to_read(m, m.stats) for m in result.scalars().all()]
 
 
 @router.get("/{slug}", response_model=MemberRead)
-async def get_member(slug: str, session: AsyncSession = Depends(get_session)) -> MemberRead:
-    m = await _load_by_slug(session, slug)
+async def get_member(
+    slug: str,
+    session: AsyncSession = Depends(get_session),
+    household_id: str | None = Depends(get_current_household_id),
+) -> MemberRead:
+    m = await _load_by_slug(session, slug, household_id)
     return _to_read(m, m.stats)
 
 
@@ -86,9 +102,14 @@ async def create_member(
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
     bridge: BridgeProtocol = Depends(get_bridge),
+    household_id: str | None = Depends(get_current_household_id),
     _parent: ParentClaim = Depends(require_parent),
 ) -> MemberRead:
-    dupe = await session.execute(select(Member).where(Member.slug == body.slug))
+    dupe = await session.execute(
+        select(Member).where(
+            Member.slug == body.slug, scoped(Member.household_id, household_id)
+        )
+    )
     if dupe.scalar_one_or_none() is not None:
         raise ConflictError(f"member slug {body.slug!r} already exists")
 
@@ -100,11 +121,16 @@ async def create_member(
         display_mode=body.display_mode,
         requires_approval=body.requires_approval,
         ha_todo_entity_id=body.ha_todo_entity_id,
+        household_id=household_id,
     )
     session.add(member)
     await session.flush()
     stats = MemberStats(
-        member_id=member.id, points_total=0, points_this_week=0, streak=0
+        member_id=member.id,
+        points_total=0,
+        points_this_week=0,
+        streak=0,
+        household_id=household_id,
     )
     session.add(stats)
     session.add(
@@ -112,6 +138,7 @@ async def create_member(
             actor=user,
             action="member_created",
             payload={"id": member.id, "slug": member.slug, "name": member.name},
+            household_id=household_id,
         )
     )
     await session.commit()
@@ -128,9 +155,10 @@ async def update_member(
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
     bridge: BridgeProtocol = Depends(get_bridge),
+    household_id: str | None = Depends(get_current_household_id),
     _parent: ParentClaim = Depends(require_parent),
 ) -> MemberRead:
-    member = await _load_by_slug(session, slug)
+    member = await _load_by_slug(session, slug, household_id)
 
     changes: dict[str, object] = {}
     for field_name, value in body.model_dump(exclude_unset=True).items():
@@ -143,6 +171,7 @@ async def update_member(
                 actor=user,
                 action="member_updated",
                 payload={"id": member.id, "slug": member.slug, "changes": changes},
+                household_id=household_id,
             )
         )
     await session.commit()
@@ -164,15 +193,17 @@ async def delete_member(
     session: AsyncSession = Depends(get_session),
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
+    household_id: str | None = Depends(get_current_household_id),
     _parent: ParentClaim = Depends(require_parent),
 ) -> None:
-    member = await _load_by_slug(session, slug)
+    member = await _load_by_slug(session, slug, household_id)
     member_id = member.id
     session.add(
         ActivityLog(
             actor=user,
             action="member_deleted",
             payload={"id": member_id, "slug": slug, "name": member.name},
+            household_id=household_id,
         )
     )
     await session.delete(member)
