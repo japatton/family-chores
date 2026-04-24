@@ -20,8 +20,8 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from family_chores.app import create_app  # noqa: E402
-from family_chores.config import Options  # noqa: E402
+from family_chores_addon.app import create_app  # noqa: E402
+from family_chores_addon.config import Options  # noqa: E402
 from family_chores_db.base import Base  # noqa: E402
 from family_chores_db.pragmas import install_sqlite_pragmas  # noqa: E402
 

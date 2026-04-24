@@ -13,7 +13,7 @@ from family_chores_db.models import (
     Member,
     RecurrenceType,
 )
-from family_chores.ha.reconcile import reconcile_once
+from family_chores_addon.ha.reconcile import reconcile_once
 from tests._ha_fakes import FakeHAClient
 
 
@@ -183,7 +183,7 @@ async def test_reconcile_continues_through_per_member_errors(async_session_facto
 
     fake = FakeHAClient()
     # Make the first call to todo_get_items fail.
-    from family_chores.ha.client import HAUnavailableError
+    from family_chores_addon.ha.client import HAUnavailableError
     fake.fail_next["todo_get_items"] = HAUnavailableError("alice is down")
 
     result = await reconcile_once(fake, async_session_factory, today=date(2026, 4, 21))

@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "family_chores"
+name = "family-chores-addon"
 version = "0.1.0"
-description = "Family Chores — Home Assistant add-on backend"
+description = "Family Chores — Home Assistant add-on (composition root)."
 requires-python = ">=3.12"
 authors = [{ name = "Jason Patton" }]
 license = { text = "MIT" }
@@ -50,13 +50,15 @@ dev = [
 ]
 
 [project.scripts]
-family-chores = "family_chores.__main__:main"
+family-chores = "family_chores_addon.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-family_chores = ["static/**/*", "db/migrations/**/*"]
+# Migrations now ship with `family-chores-db` (see DECISIONS §11 step 3);
+# the addon only ships its built SPA static assets.
+family_chores_addon = ["static/**/*"]
 
 [tool.ruff]
 line-length = 100
@@ -74,7 +76,7 @@ ignore = [
 [tool.mypy]
 python_version = "3.12"
 strict = true
-packages = ["family_chores"]
+packages = ["family_chores_addon"]
 mypy_path = "src"
 # `import-untyped` fires per-call-site when a third-party package has no
 # py.typed marker. The idiomatic fix (per-line `# type: ignore`) goes

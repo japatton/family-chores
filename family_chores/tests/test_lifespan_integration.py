@@ -14,8 +14,8 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from family_chores.app import create_app
-from family_chores.config import Options
+from family_chores_addon.app import create_app
+from family_chores_addon.config import Options
 
 
 @pytest.fixture

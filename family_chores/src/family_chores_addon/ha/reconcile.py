@@ -30,13 +30,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from family_chores_db.models import ChoreInstance, Member
-from family_chores.ha.bridge import (
+from family_chores_addon.ha.bridge import (
     _INSTANCE_STATE_TO_TODO_STATUS,
     TODO_STATUS_NEEDS_ACTION,
     fc_tag,
     todo_summary_for,
 )
-from family_chores.ha.client import HAClient, HAClientError, TodoItem
+from family_chores_addon.ha.client import HAClient, HAClientError, TodoItem
 
 log = logging.getLogger(__name__)
 

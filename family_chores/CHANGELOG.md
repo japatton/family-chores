@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Internal restructure to a monorepo layout.** This release is a large
+  internal refactor that splits the add-on's code into shared workspace
+  packages (`packages/core`, `packages/db`, `packages/api`) plus a thin
+  `family_chores/src/family_chores_addon/` composition root for the HA
+  add-on itself. **No user-facing changes** — every UI behaviour, every
+  HA event, every entity name is identical to the previous release.
+  The normal HA Supervisor update flow should work for existing
+  installs: just click Update on the add-on. **If the update fails with
+  a build error**, uninstall and reinstall the add-on as a fallback —
+  your data at `/data/family_chores.db` is preserved across reinstall
+  because the add-on **slug remains `family_chores`**, which is what HA
+  Supervisor keys persistence on. See `DECISIONS.md` §11 for the full
+  refactor sequence.
+
 ### Added
 
 - **Milestone 8 — tests + CI.** Backend now clean under `ruff check` +

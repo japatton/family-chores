@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from datetime import date as date_type
 from typing import Any
 
-from family_chores.ha.client import HAClientError, HAUnavailableError, TodoItem
+from family_chores_addon.ha.client import HAClientError, HAUnavailableError, TodoItem
 
 
 @dataclass

@@ -8,7 +8,7 @@ from datetime import date
 import httpx
 import pytest
 
-from family_chores.ha.client import (
+from family_chores_addon.ha.client import (
     HAClient,
     HAClientError,
     HAServerError,

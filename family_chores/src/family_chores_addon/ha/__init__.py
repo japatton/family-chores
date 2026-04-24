@@ -9,8 +9,8 @@ that shaped this module (especially the need for `todo.get_items` calls to
 learn UIDs — HA 2026.4 doesn't surface items in entity state attributes).
 """
 
-from family_chores.ha.bridge import HABridge, NoOpBridge
-from family_chores.ha.client import (
+from family_chores_addon.ha.bridge import HABridge, NoOpBridge
+from family_chores_addon.ha.client import (
     HAClient,
     HAClientError,
     HAServerError,

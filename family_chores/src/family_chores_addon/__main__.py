@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uvicorn
 
-from family_chores.config import load_options
+from family_chores_addon.config import load_options
 
 
 def main() -> None:

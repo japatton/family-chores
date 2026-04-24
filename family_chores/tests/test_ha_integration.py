@@ -15,9 +15,9 @@ import asyncio
 import pytest
 from fastapi.testclient import TestClient
 
-from family_chores import app as app_module
-from family_chores.app import create_app
-from family_chores.config import Options
+from family_chores_addon import app as app_module
+from family_chores_addon.app import create_app
+from family_chores_addon.config import Options
 from tests._ha_fakes import FakeHAClient
 
 
@@ -189,7 +189,7 @@ def test_approve_fires_approved_event(ha_client, fake_ha):
 
 def test_events_queue_survives_unavailable_ha(ha_client, fake_ha):
     """A network blip should not lose events — they should retry."""
-    from family_chores.ha.client import HAUnavailableError
+    from family_chores_addon.ha.client import HAUnavailableError
 
     headers = _parent_auth(ha_client)
     ha_client.post(

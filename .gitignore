@@ -21,7 +21,7 @@ lovelace-card/dist/
 # frontend-build Docker stage. The directory doesn't exist in a fresh
 # clone; FastAPI's static mount checks for `index.html` specifically
 # and falls through to a helpful "run `npm run build`" message.
-family_chores/backend/src/family_chores/static/
+family_chores/src/family_chores_addon/static/
 
 node_modules/
 

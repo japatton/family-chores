@@ -29,12 +29,11 @@ members = [
     "packages/db",
     "packages/api",
     "apps/saas-backend",
-    # The add-on's pyproject lives at family_chores/backend/pyproject.toml
-    # during steps 2–5 of the Phase 2 refactor (see DECISIONS §11). It will
-    # move up to family_chores/pyproject.toml in step 6 when the `backend/`
-    # wrapper is flattened (Q8 resolution); at that point this member path
-    # changes from "family_chores/backend" to "family_chores".
-    "family_chores/backend",
+    # The add-on lives at family_chores/ at the repo root rather than under
+    # apps/ — HA Supervisor expects each add-on as a direct child of the
+    # repo (see DECISIONS §11 "Layout asymmetry"). The Python package was
+    # flattened to family_chores/src/family_chores_addon/ in step 6 (Q8).
+    "family_chores",
 ]
 
 [tool.uv.sources]

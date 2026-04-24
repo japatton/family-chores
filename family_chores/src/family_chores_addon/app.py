@@ -27,13 +27,13 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from family_chores import __version__
-from family_chores.auth import IngressAuthStrategy
-from family_chores.config import Options, load_options
-from family_chores.ha import HABridge, NoOpBridge, make_client_from_env
-from family_chores.ha.client import HAClient, HAClientError
-from family_chores.ha.reconcile import reconcile_once
-from family_chores.scheduler import make_scheduler
+from family_chores_addon import __version__
+from family_chores_addon.auth import IngressAuthStrategy
+from family_chores_addon.config import Options, load_options
+from family_chores_addon.ha import HABridge, NoOpBridge, make_client_from_env
+from family_chores_addon.ha.client import HAClient, HAClientError
+from family_chores_addon.ha.reconcile import reconcile_once
+from family_chores_addon.scheduler import make_scheduler
 from family_chores_api import WSManager
 from family_chores_api import create_app as create_api_app
 from family_chores_api.security import ensure_jwt_secret

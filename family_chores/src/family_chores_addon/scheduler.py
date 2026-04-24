@@ -20,8 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from family_chores_core.time import local_today
 from family_chores_api.bridge import BridgeProtocol
-from family_chores.ha.client import HAClient
-from family_chores.ha.reconcile import reconcile_once
+from family_chores_addon.ha.client import HAClient
+from family_chores_addon.ha.reconcile import reconcile_once
 from family_chores_api.services.rollover_service import run_rollover
 
 log = logging.getLogger(__name__)

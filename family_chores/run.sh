@@ -6,4 +6,4 @@ set -eu
 
 mkdir -p /data /data/avatars
 
-exec python -m family_chores
+exec python -m family_chores_addon

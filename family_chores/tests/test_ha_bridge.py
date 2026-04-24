@@ -14,7 +14,7 @@ from family_chores_db.models import (
     MemberStats,
     RecurrenceType,
 )
-from family_chores.ha.bridge import (
+from family_chores_addon.ha.bridge import (
     SENSOR_PENDING_APPROVALS,
     HABridge,
     fc_tag,
@@ -210,7 +210,7 @@ async def test_bridge_coalesces_duplicate_notifications(async_session_factory):
 
 @pytest.mark.asyncio
 async def test_event_backlog_caps_at_limit(async_session_factory):
-    from family_chores.ha.bridge import _EVENT_BACKLOG_LIMIT
+    from family_chores_addon.ha.bridge import _EVENT_BACKLOG_LIMIT
 
     fake = FakeHAClient()
     bridge = HABridge(fake, async_session_factory)

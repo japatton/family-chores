@@ -5,9 +5,13 @@
 ARG BUILD_FROM="ghcr.io/home-assistant/amd64-base-python:3.12-alpine3.20"
 
 # ─── Stage 1: frontend build ──────────────────────────────────────────────
-# Compiles the React/Vite SPA into backend/src/family_chores/static/.
-# Runs on Node 22 LTS; the output is pure static HTML/JS/CSS so the final
+# Compiles the React/Vite SPA into src/family_chores_addon/static/. Runs
+# on Node 22 LTS; the output is pure static HTML/JS/CSS so the final
 # image doesn't need Node at all.
+#
+# Layout note: the addon flattened in Phase 2 step 6 (DECISIONS §11) —
+# the previous `backend/` wrapper was removed so the Python source now
+# sits at `src/family_chores_addon/` rather than `backend/src/family_chores/`.
 FROM node:22-alpine AS frontend-build
 
 WORKDIR /app/frontend
@@ -19,9 +23,9 @@ RUN npm ci --no-audit --no-fund
 # Copy the rest of the frontend source.
 COPY frontend/ ./
 
-# Vite's `outDir` is `../backend/src/family_chores/static` — create the
+# Vite's `outDir` is `../src/family_chores_addon/static` — create the
 # target path up front so the relative resolve works.
-RUN mkdir -p /app/backend/src/family_chores \
+RUN mkdir -p /app/src/family_chores_addon \
     && npm run build
 
 # ─── Stage 2: backend runtime ─────────────────────────────────────────────
@@ -48,14 +52,14 @@ RUN apk add --no-cache --virtual .build-deps \
 WORKDIR /app
 
 # Backend source first.
-COPY backend/pyproject.toml /app/backend/pyproject.toml
-COPY backend/src /app/backend/src
+COPY pyproject.toml /app/pyproject.toml
+COPY src /app/src
 
 # Overlay the fresh SPA build on top of the (empty) static directory.
-COPY --from=frontend-build /app/backend/src/family_chores/static \
-    /app/backend/src/family_chores/static
+COPY --from=frontend-build /app/src/family_chores_addon/static \
+    /app/src/family_chores_addon/static
 
-RUN pip install --no-cache-dir --prefer-binary /app/backend \
+RUN pip install --no-cache-dir --prefer-binary /app \
     && apk del .build-deps
 
 COPY run.sh /run.sh

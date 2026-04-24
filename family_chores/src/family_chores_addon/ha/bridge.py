@@ -41,7 +41,7 @@ from family_chores_db.models import (
     InstanceState,
     Member,
 )
-from family_chores.ha.client import (
+from family_chores_addon.ha.client import (
     HAClient,
     HAClientError,
     HAUnauthorizedError,

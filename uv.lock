@@ -9,7 +9,7 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "family-chores",
+    "family-chores-addon",
     "family-chores-api",
     "family-chores-core",
     "family-chores-db",
@@ -208,9 +208,9 @@ wheels = [
 ]
 
 [[package]]
-name = "family-chores"
+name = "family-chores-addon"
 version = "0.1.0"
-source = { editable = "family_chores/backend" }
+source = { editable = "family_chores" }
 dependencies = [
     { name = "aiosqlite" },
     { name = "alembic" },
