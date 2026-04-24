@@ -17,26 +17,47 @@ HTTP API, so your dashboard stays fast and the state model stays one-way.
 
 ## Install
 
-### Manual
+Three paths, in order of ease.
 
-1. Build the card:
-   ```sh
-   cd lovelace-card
-   npm install
-   npm run build
-   ```
-2. Copy `dist/family-chores-card.js` into your HA config directory at
+### From a GitHub Release (recommended)
+
+The release workflow attaches a pre-built `family-chores-card.js` to every
+tagged release, so you don't need Node installed.
+
+1. Open the [latest release](https://github.com/japatton/family-chores/releases/latest)
+   and download `family-chores-card.js` from the **Assets** section.
+2. Copy it into your HA config directory at
    `/config/www/family-chores-card.js` (Samba, SSH, or the File editor
    add-on all work).
 3. In **Settings → Dashboards → ⋮ → Resources**, add:
-   - URL: `/local/family-chores-card.js`
+   - URL: `/local/family-chores-card.js?v=<release-version>`
    - Type: `JavaScript Module`
-4. Refresh the browser. You can now add the card via the **+ Add Card**
-   picker; it appears as "Family Chores".
+4. Refresh the browser. Add the card via **+ Add Card** → "Family Chores".
 
-### HACS
+The `?v=<release-version>` query string is a cache-buster — bump it when you
+upgrade so HA reloads the module.
 
-HACS support will land with milestone 8 / release automation.
+### HACS (custom repository)
+
+The card ships HACS metadata (`hacs.json`, `info.md`) so it's ready for
+HACS custom-repository install. Because this monorepo houses both the
+add-on and the card, HACS default-list inclusion requires a standalone
+card-only repo — see [`docs/roadmap.md`](../docs/roadmap.md) for status.
+Until then, use one of the other two install paths.
+
+### From source
+
+1. Clone the repo and build:
+   ```sh
+   git clone https://github.com/japatton/family-chores
+   cd family-chores
+   pnpm install --frozen-lockfile
+   pnpm --filter family-chores-card build
+   ```
+   (Or, standalone without pnpm: `cd lovelace-card && npm install && npm run build`.)
+2. Copy `lovelace-card/dist/family-chores-card.js` into your HA config
+   directory at `/config/www/family-chores-card.js`.
+3. Register the resource and add the card per steps 3 and 4 above.
 
 ## Configuration
 

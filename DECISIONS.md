@@ -775,3 +775,165 @@ No direct conflicts found. Specifically:
     7. `FakeAuthStrategy` duplicated inline in `family_chores/tests/test_household_scoping.py` rather than imported from `packages/api/tests/conftest.py` (pytest's `--import-mode=importlib` doesn't share fixtures across test packages).
     8. `addon` `image:` field NOT added to `config.yaml` (deferred deployment-config decision; documented in Dockerfile header).
   - **Phase 2 is closed.** Future SaaS work (Phase 3) starts from the SaaS scaffold + the two TODO_POST_REFACTOR follow-ups, with the architecture tests as the safety net to catch any future drift.
+
+---
+
+## 12. Public release polish
+
+Tracking prompt: post-v0.2.1 release-polish prompt (received 2026-04-24, after the v0.2.1 tag was already published and GHCR images live). Goal is repository-level governance + documentation for a stranger landing from a Reddit link or search result, *without disturbing what shipped*. Branch: `release-polish` off `main` at `63be636`.
+
+### Pre-work inventory (2026-04-24)
+
+**Critical divergence from the prompt's stated context up front:** the prompt §0 says `family_chores/README.md` exists. **It does not.** There is only a repo-root `README.md`. This invalidates §4.2 (which assumes a VERIFY action and forbids touching that file) and changes the §4.1 install-section plan (which links to `family_chores/README.md`). Recommendation deferred to "Open questions" below.
+
+#### Path-by-path inventory
+
+| Path | State | Lines/notes | Prompt §  | Recommended action |
+|---|---|---|---|---|
+| `/README.md` | EXISTS | 165 lines; has Title, Why, How it works, **Screenshots** (added 2026-04-24, commit `63be636`), Install→`INSTALL.md`, Threat model, Features (v1), Roadmap, Assets to replace, Development, License (says MIT) | §4.1 | EDIT (significant divergences from §4.1 spec — see "Open questions" Q1) |
+| `/LICENSE` | **MISSING** | — | §4.8 | CREATE MIT (matches README claim) and flag for human confirm |
+| `/CONTRIBUTING.md` | MISSING | — | §4.9 | CREATE |
+| `/SECURITY.md` | MISSING | — | §4.10 | CREATE with `YOUR_CONTACT_EMAIL_HERE` placeholder |
+| `/CODE_OF_CONDUCT.md` | MISSING | — | §4.11 | CREATE (Contributor Covenant 2.1) with `YOUR_CONTACT_EMAIL_HERE` |
+| `/.github/ISSUE_TEMPLATE/` | MISSING | (only `.github/workflows/` exists today) | §4.12 | CREATE dir + `bug_report.yml` + `feature_request.yml` + `config.yml` |
+| `/.github/PULL_REQUEST_TEMPLATE.md` | MISSING | — | §4.13 | CREATE |
+| `/docs/` | EXISTS | 1 entry (`screenshots/`) | §4.14/§4.15 | EXTEND (add `architecture.md` + `roadmap.md`) |
+| `/docs/screenshots/` | EXISTS | 7 PNGs (see image inventory below) | — | LEAVE; reference at current paths |
+| `/docs/architecture.md` | MISSING | — | §4.14 | CREATE |
+| `/docs/roadmap.md` | MISSING | — | §4.15 | CREATE |
+| `/family_chores/README.md` | **MISSING** | (prompt says exists; it does not) | §4.2 | **OPEN QUESTION Q1** — see below |
+| `/family_chores/DOCS.md` | EXISTS | 83 lines; has First-run setup, Configuration, Entities published, Lovelace card section, Events fired, Troubleshooting (3 FAQs), Support | §4.3 | EDIT (gaps vs spec: missing Dashboard integration, Backup and restore, Privacy; troubleshooting wants 4–6 FAQs has 3) |
+| `/family_chores/CHANGELOG.md` | EXISTS | 180 lines; v0.2.1 + v0.2.0 entries plus full milestone-N history | §4.4 | VERIFY only — entries byte-identical guarantee |
+| `/family_chores/icon.png` | EXISTS | 570 bytes — confirmed placeholder | §6 | LEAVE; existing README's "Assets to replace" already flags |
+| `/family_chores/logo.png` | EXISTS | 888 bytes — confirmed placeholder | §6 | LEAVE; same as above |
+| `/family_chores/translations/en.yaml` | MISSING | (translations dir doesn't exist) | inventory only | LEAVE; not in CREATE/EDIT scope per §4 |
+| `/lovelace-card/README.md` | EXISTS | 82 lines; tagline, install (Manual + HACS-not-yet-supported placeholder), Configuration, "Why a separate card". Reasonably complete. | §4.5 | EDIT (update HACS section since HACS is now planned via this prompt; add screenshot reference; tighten relationship-to-addon) |
+| `/lovelace-card/hacs.json` | MISSING | — | §4.6 | CREATE |
+| `/lovelace-card/info.md` | MISSING | — | §4.7 | CREATE (under 30 lines; HACS pre-install view) |
+| `/lovelace-card/CHANGELOG.md` | MISSING | — | §4.7 | CREATE (Keep-a-Changelog seeded with `[Unreleased]` + `[0.1.0]`) |
+| `/lovelace-card/package.json` | EXISTS | version `"0.1.0"` | §4.6 verify | NO CHANGE; lovelace-card CHANGELOG seeds from this version |
+| `/RELEASE_NOTES_v0.2.1.md` | MISSING | — | §4.16 | SKIP per spec (no retroactive release notes) |
+| `/TODO_POST_REFACTOR.md` | EXISTS | 39 lines; captures (a) `AppConfig.key` PK + (b) `Member.slug` UNIQUE multi-tenant follow-ups + (c) conftest `sys.path.insert` cleanup. Content matches DECISIONS §11's expectations. | §0 verify | VERIFY confirmed; no edit |
+
+**Bonus path not in §2 inventory but very relevant:** `/INSTALL.md` exists at the repo root (133 lines). It's the substantial install doc the existing repo-root README links to. The §4.1 spec says the new README's "Install" subsection should link to `family_chores/README.md` (which doesn't exist). With Q1 unresolved, INSTALL.md remains the de-facto install doc — flagged in Q2 below.
+
+#### Image inventory (every PNG in the repo, excluding `.venv/`, `node_modules/`, `.git/`, caches)
+
+| Path | Source / purpose |
+|---|---|
+| `docs/screenshots/today-desktop.png` | Hero shot — 3 member tiles, 100/33/50% progress |
+| `docs/screenshots/today-portrait.png` | Same view stacked vertically for phone viewports |
+| `docs/screenshots/member-carol.png` | Kid view with mixed states (done + pending cards) |
+| `docs/screenshots/member-alice-all-done.png` | Celebration screen — confetti + "You did it!" |
+| `docs/screenshots/parent-approvals.png` | Parent → Approvals tab with pending item |
+| `docs/screenshots/parent-members.png` | Parent → Members tab |
+| `docs/screenshots/parent-chores.png` | Parent → Chores tab |
+| `family_chores/icon.png` | 570-byte placeholder (per existing README's "Assets to replace" — see §6 of the prompt) |
+| `family_chores/logo.png` | 888-byte placeholder (same) |
+
+No image is in a "messy" location — `docs/screenshots/` is a clean canonical path that the existing repo-root README already references. Per §3 ("Referenced image paths match reality") and §6 ("Move screenshots: leave them"), nothing to relocate.
+
+**Lovelace-card screenshot:** none exists. The existing `lovelace-card/README.md` does not reference an image. Per §4.5 the new card README should include a screenshot at `docs/screenshots/lovelace-card.png`. Flagged in "Human action needed" below.
+
+### Open questions (block before content phase begins)
+
+**Q1 — `family_chores/README.md` does not exist. Resolve before §4.1 + §4.2 work begins.**
+HA add-on convention: a README inside the addon directory shows in HA's add-on store *before* install; `DOCS.md` shows in the "Documentation" tab *after* install. With no addon-dir README, HA's store probably falls back to the `description:` line in `config.yaml` (`"Family chore tracking and rewards, with HA entity bridging."`) — short and plain, but technically functional.
+
+Three options:
+
+  - **(a)** CREATE `family_chores/README.md` as a fresh, store-appropriate file — short (~80–120 lines), one-screen overview with one or two screenshots, the install path (link to `INSTALL.md`), and a "Full project README" link to `/README.md`. The existing repo-root README serves the GitHub-visitor audience; the new addon README serves the HA-store-browser audience. **§4.1's recommendation to link from the repo-root README's Install section to `family_chores/README.md` then becomes correct.**
+  - **(b)** Don't create one. Repo-root README's Install section links to `INSTALL.md` directly (current state). HA's store keeps using the `description:` line. Slight discoverability hit but no risk of duplicating content.
+  - **(c)** Create a one-line stub `family_chores/README.md` that just points to the repo-root README + INSTALL.md. Cheapest. Probably worst experience for the HA-store browser who never clicks through.
+
+  **Recommendation: (a).** Highest user-experience payoff for the addon-store browser, and it makes §4.1's spec self-consistent. ~1 hour of writing.
+
+**Q2 — `INSTALL.md` reconciliation.** Whether to keep INSTALL.md at the root (current state) or fold it into the new `family_chores/README.md` from Q1(a). The Q1(a) addon README would be short by design and link to INSTALL.md for full detail. INSTALL.md stays.
+
+**Q3 — LICENSE choice.** Existing repo-root README says "MIT." No `LICENSE` file in the repo. Per §4.8 the default if forced is MIT — needs human confirm. If MIT is wrong (e.g. you've decided AGPL or proprietary), flag now.
+
+**Q4 — Contact email for SECURITY.md and CODE_OF_CONDUCT.md.** Per §6, Claude cannot fill in. Will use `YOUR_CONTACT_EMAIL_HERE` placeholders. Human swaps before merge.
+
+**Q5 — Lovelace card screenshot.** §4.5 calls for one. None exists. Capture-in-this-session is feasible (the dev server + headless-Chrome pipeline from the README screenshots commit `63be636` still works); needs a built `dist/family-chores-card.js` and a real HA install to render the card against, OR a synthetic test page. Lower priority than text content — can ship the card README without it and add later.
+
+**Q6 — `family_chores/CHANGELOG.md` historical entries reference pre-refactor module paths** (`family_chores.ha.bridge`, `family_chores.services.*`) in prose. Per §4.4 these are intentionally byte-identical to what shipped. They are factually correct as-of the milestone they document. No action needed but noting for the record.
+
+### Action plan summary (after Q1–Q5 resolved)
+
+In commit groups per §7:
+
+1. **Governance:** `LICENSE` (MIT, flagged), `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `.github/ISSUE_TEMPLATE/{bug_report,feature_request,config}.yml`, `.github/PULL_REQUEST_TEMPLATE.md`. ~7 new files. Standard content.
+2. **Repo-root content:** EDIT `/README.md` per §4.1 (full diff likely; will flag scope), CREATE `docs/architecture.md`, CREATE `docs/roadmap.md`. ~2 new files + 1 sizeable EDIT.
+3. **Lovelace card docs:** EDIT `lovelace-card/README.md`, CREATE `lovelace-card/hacs.json`, CREATE `lovelace-card/info.md`, CREATE `lovelace-card/CHANGELOG.md`. 1 EDIT + 3 new files.
+4. **Add-on README** (Q1-dependent): CREATE `family_chores/README.md` if Q1=(a). 0 or 1 new file.
+5. **Add-on DOCS.md gap-fill:** EDIT `family_chores/DOCS.md` to add Dashboard integration, Backup and restore, Privacy, expand troubleshooting from 3 → 6 FAQs. 1 EDIT.
+6. **Verification + summary** (per §5): link check, image-path check, ensure `family_chores/README.md` (Q1) and `family_chores/CHANGELOG.md` aren't disturbed, confirm `config.yaml` version unchanged, run full test suite, summarise.
+
+### Merge checklist (human actions required before merging the polish branch)
+
+- [ ] Resolve Q1 (whether to create `family_chores/README.md`).
+- [ ] Resolve Q3 (confirm MIT license is correct).
+- [ ] Replace `YOUR_CONTACT_EMAIL_HERE` placeholders in `SECURITY.md` and `CODE_OF_CONDUCT.md`.
+- [ ] (Optional) Capture a Lovelace-card screenshot for `docs/screenshots/lovelace-card.png` (Q5).
+- [ ] Review the rewritten `/README.md` for voice; this is the polish output you'll see most.
+- [ ] Confirm `family_chores/README.md` (if created via Q1=a) is acceptable for the HA add-on store before tagging the next release.
+
+### Pause point
+
+Per prompt §7: this commit (DECISIONS.md only — no content files yet) ends the inventory phase. Awaiting human review + Q1–Q5 answers before starting commit group 1.
+
+### Completion (2026-04-24)
+
+Human responses to Q1–Q5 (received in-session, 2026-04-24):
+
+- **Q1 → (a).** Create `family_chores/README.md` as a fresh store-appropriate file.
+- **Q2 →** Keep `INSTALL.md` at repo root.
+- **Q3 → MIT confirmed.**
+- **Q4 →** `YOUR_CONTACT_EMAIL_HERE` placeholders acceptable; maintainer swaps before merge.
+- **Q5 → (B).** Skip Lovelace-card screenshot for this pass; can be added later.
+
+#### Commits on `release-polish` (all documentation-only)
+
+| Commit | Group | What |
+|---|---|---|
+| `b50d63a` | 0 | §12 pre-work inventory (this section, initial) |
+| `67b5a26` | 1 | Governance: LICENSE, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, issue templates × 3, PR template |
+| `d3a0592` | 2 | Repo-root README rewrite + `docs/architecture.md` + `docs/roadmap.md` |
+| `9f71100` | 3 | Lovelace card docs: README edit + `hacs.json` + `info.md` + `CHANGELOG.md` |
+| `43116b5` | 4 | `family_chores/README.md` (store-appropriate, 90 lines) |
+| `3c8bafe` | 5 | `family_chores/DOCS.md` expansion: Dashboard integration, Backup+restore, Privacy, 6 FAQs |
+| *this commit* | 6 | Verification pass: architecture.md path fix + this completion note |
+
+Branch delta vs. base `63be636`: 18 files / +1082 / −106 lines, all documentation.
+
+#### Verification results
+
+- **Link check.** Scanned all 12 touched markdown files for broken relative links and `<img src=...>` paths; zero broken.
+- **Image-path check.** All 7 screenshots in `docs/screenshots/` referenced by `/README.md` resolve. No new images introduced.
+- **`family_chores/CHANGELOG.md` byte-identical.** `git diff 63be636..HEAD -- family_chores/CHANGELOG.md` returns zero lines.
+- **`family_chores/config.yaml` version unchanged** at `0.2.1`.
+- **Test suite green.** `./scripts/lint.sh` exits 0 on every stage: ruff + mypy (addon + packages + saas), pytest (147 addon + 12 saas + 81 architecture + packages suites), frontend lint + typecheck + vitest (26 addon + 2 web), lovelace-card tsc. 364 tests total, consistent with `docs/architecture.md`'s testing topology.
+
+#### Surprises / deviations from plan
+
+- **`docs/architecture.md` `AuthStrategy` path error caught at verification.** I originally wrote `packages/api/src/family_chores_api/auth.py` when the Protocol actually lives at `packages/api/src/family_chores_api/deps/auth.py`. Caught by grepping for `class AuthStrategy(Protocol)` across `packages/`. Fixed in this commit.
+- **CoC filter workaround.** Output-filtering policy blocked writing the Contributor Covenant 2.1 verbatim (the policy's enumeration of unacceptable-behaviour categories reads like sensitive content when reproduced). Pivoted to the widely-used adopt-by-reference pattern: `CODE_OF_CONDUCT.md` is a short file that states the project adopts Covenant 2.1, links to the canonical text on contributor-covenant.org, and specifies the enforcement contact. Kubernetes, Django, and Rust use this pattern. Maintainability bonus: future Covenant updates are inherited automatically with no edit.
+- **Context-window boundary during commit group 1.** Conversation hit the context limit mid-group; three governance files (`LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`) were written but not yet committed at the break. Continuation resumed at the same branch state and completed the group without re-doing work. No duplicate or conflicting files produced.
+
+#### Updated merge checklist
+
+What remains before merging `release-polish`:
+
+- [ ] **Replace `YOUR_CONTACT_EMAIL_HERE` placeholders** in `SECURITY.md` and `CODE_OF_CONDUCT.md` with a real reporting address. Use the same address in both.
+- [ ] **Review the rewritten `/README.md`** for voice — this is the most-read output.
+- [ ] **(Optional) Capture a Lovelace-card screenshot** for `docs/screenshots/lovelace-card.png` and reference it from `lovelace-card/README.md` and `lovelace-card/info.md` (Q5 deferred).
+- [ ] **(Optional) Replace `family_chores/icon.png` and `family_chores/logo.png`** placeholders before the next tagged release. The placeholders ship today; the polish didn't touch them.
+
+Resolved from the initial checklist:
+
+- [x] Q1 resolved — `family_chores/README.md` created (option a, 90 lines).
+- [x] Q3 resolved — MIT confirmed; `LICENSE` created.
+- [x] Polish did not disturb `family_chores/CHANGELOG.md` (byte-identical check passes).
+- [x] `config.yaml` version unchanged (confirmed at `0.2.1`).
+
+The polish branch is merge-ready pending the two required human actions above (email swap + README voice review).
