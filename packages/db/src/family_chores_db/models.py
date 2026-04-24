@@ -43,7 +43,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from family_chores_core.enums import InstanceState, RecurrenceType
 
 from family_chores_core.time import utcnow
-from family_chores.db.base import Base
+from family_chores_db.base import Base
 
 __all__ = ["InstanceState", "RecurrenceType"]  # explicit re-export
 

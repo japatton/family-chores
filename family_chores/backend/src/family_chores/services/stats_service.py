@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from family_chores_core.points import week_anchor_for
 from family_chores_core.streaks import compute_streak
-from family_chores.db.models import ChoreInstance, InstanceState, Member, MemberStats
+from family_chores_db.models import ChoreInstance, InstanceState, Member, MemberStats
 
 
 async def recompute_stats_for_member(

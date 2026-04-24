@@ -217,6 +217,7 @@ dependencies = [
     { name = "apscheduler" },
     { name = "argon2-cffi" },
     { name = "family-chores-core" },
+    { name = "family-chores-db" },
     { name = "fastapi" },
     { name = "httptools" },
     { name = "httpx" },
@@ -247,6 +248,7 @@ requires-dist = [
     { name = "apscheduler", specifier = ">=3.10,<4" },
     { name = "argon2-cffi", specifier = ">=23.1" },
     { name = "family-chores-core", editable = "packages/core" },
+    { name = "family-chores-db", editable = "packages/db" },
     { name = "fastapi", specifier = ">=0.115,<0.116" },
     { name = "httptools", specifier = ">=0.6" },
     { name = "httpx", specifier = ">=0.27,<0.28" },
@@ -299,14 +301,28 @@ provides-extras = ["dev"]
 name = "family-chores-db"
 version = "0.1.0"
 source = { editable = "packages/db" }
+dependencies = [
+    { name = "aiosqlite" },
+    { name = "alembic" },
+    { name = "family-chores-core" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+]
 
 [package.optional-dependencies]
 dev = [
     { name = "pytest" },
+    { name = "pytest-asyncio" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pytest", marker = "extra == 'dev'", specifier = ">=8.2" }]
+requires-dist = [
+    { name = "aiosqlite", specifier = ">=0.20,<0.21" },
+    { name = "alembic", specifier = ">=1.13,<1.14" },
+    { name = "family-chores-core", editable = "packages/core" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.2" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.30,<2.1" },
+]
 provides-extras = ["dev"]
 
 [[package]]

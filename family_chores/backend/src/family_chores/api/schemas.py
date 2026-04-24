@@ -9,7 +9,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from family_chores.db.models import DisplayMode, InstanceState, RecurrenceType
+from family_chores_db.models import DisplayMode, InstanceState, RecurrenceType
 
 _VALID_ISO_WEEKDAYS = {1, 2, 3, 4, 5, 6, 7}
 

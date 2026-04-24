@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from family_chores_core.recurrence import dates_due
-from family_chores.db.models import Chore, ChoreInstance, InstanceState
+from family_chores_db.models import Chore, ChoreInstance, InstanceState
 
 INSTANCE_HORIZON_DAYS = 14
 

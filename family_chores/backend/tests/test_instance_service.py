@@ -7,7 +7,7 @@ from datetime import date, timedelta
 import pytest
 from sqlalchemy import select
 
-from family_chores.db.models import Chore, ChoreInstance, InstanceState, Member, RecurrenceType
+from family_chores_db.models import Chore, ChoreInstance, InstanceState, Member, RecurrenceType
 from family_chores.services.instance_service import generate_instances, mark_overdue
 
 

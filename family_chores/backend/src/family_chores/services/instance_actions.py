@@ -19,7 +19,7 @@ from family_chores.api.errors import (
     UndoWindowExpiredError,
 )
 from family_chores_core.time import utcnow
-from family_chores.db.models import (
+from family_chores_db.models import (
     ActivityLog,
     Chore,
     ChoreInstance,

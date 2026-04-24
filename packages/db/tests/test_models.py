@@ -9,8 +9,8 @@ from sqlalchemy import create_engine, event, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from family_chores.db.base import Base
-from family_chores.db.models import (
+from family_chores_db.base import Base
+from family_chores_db.models import (
     ActivityLog,
     AppConfig,
     Chore,

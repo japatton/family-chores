@@ -22,7 +22,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from family_chores.db.models import AppConfig
+from family_chores_db.models import AppConfig
 
 _hasher = PasswordHasher()
 

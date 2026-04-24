@@ -9,17 +9,28 @@ description = "SQLAlchemy models, Alembic migrations, and DB helpers for Family 
 requires-python = ">=3.12"
 authors = [{ name = "Jason Patton" }]
 license = { text = "MIT" }
-# Step 3 will populate these with the full DB stack once models move in.
-# Kept empty at step 1 so the scaffold syncs without pulling real deps.
-dependencies = []
+dependencies = [
+    # Workspace dep — db.models imports the domain enums and `utcnow` from core.
+    "family-chores-core",
+    "sqlalchemy[asyncio]>=2.0.30,<2.1",
+    "aiosqlite>=0.20,<0.21",
+    "alembic>=1.13,<1.14",
+]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.2",
+    "pytest-asyncio>=0.23",
 ]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# Migration scripts must ship with the wheel — `default_alembic_upgrade()`
+# in recovery.py resolves them via `Path(__file__).parent / "migrations"`,
+# which fails on a non-editable install if the package data is excluded.
+family_chores_db = ["migrations/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

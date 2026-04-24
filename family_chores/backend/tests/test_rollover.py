@@ -7,7 +7,7 @@ from datetime import date, timedelta
 import pytest
 
 from family_chores_core.streaks import STREAK_MILESTONES
-from family_chores.db.models import (
+from family_chores_db.models import (
     Chore,
     ChoreInstance,
     InstanceState,

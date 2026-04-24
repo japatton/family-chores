@@ -36,8 +36,8 @@ from family_chores.api.errors import DomainError
 from family_chores.api.events import WSManager
 from family_chores.config import Options, load_options
 from family_chores_core.time import local_today
-from family_chores.db.base import make_async_engine, make_session_factory
-from family_chores.db.startup import BootstrapResult, bootstrap_db
+from family_chores_db.base import make_async_engine, make_session_factory
+from family_chores_db.recovery import BootstrapResult, bootstrap_db
 from family_chores.ha import HABridge, NoOpBridge, make_client_from_env
 from family_chores.ha.client import HAClient, HAClientError
 from family_chores.ha.reconcile import reconcile_once

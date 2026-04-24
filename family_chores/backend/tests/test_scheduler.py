@@ -15,7 +15,7 @@ import pytest
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from family_chores.db.models import Chore, ChoreInstance, Member, MemberStats, RecurrenceType
+from family_chores_db.models import Chore, ChoreInstance, Member, MemberStats, RecurrenceType
 from family_chores.scheduler import (
     MIDNIGHT_JOB_ID,
     RECONCILE_INTERVAL_MIN,

@@ -26,7 +26,7 @@ from family_chores.api.schemas import (
     VerifyPinRequest,
     WhoAmI,
 )
-from family_chores.db.models import ActivityLog
+from family_chores_db.models import ActivityLog
 from family_chores.security import (
     ParentClaim,
     clear_pin_hash,

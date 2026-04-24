@@ -1,14 +1,31 @@
 """Database layer for Family Chores.
 
 Owns SQLAlchemy models, Alembic migrations, the engine/session factory, the
-SQLite PRAGMA connect hooks, the `scoped()` tenant-filter helper, and the
-WAL-aware recovery/backup utilities.
+SQLite PRAGMA connect hooks, and the WAL-aware recovery/backup utilities.
 
-Apps call `recovery.ensure_db_ready(...)` from their own lifespan. This
-package MUST stay free of HA-specific dependencies.
+Apps construct engines via `make_async_engine(db_path)` and call
+`recovery.bootstrap_db(...)` from their own lifespan. This package MUST
+stay free of HA-specific dependencies.
 
-See `DECISIONS.md` §11. Code migrates in here during step 3 of the Phase 2
-monorepo refactor; step 1 is scaffold-only.
+The `models` submodule is re-exported eagerly so importing
+`family_chores_db` registers every ORM table on `Base.metadata` — required
+for `Base.metadata.create_all` and Alembic autogenerate to see all tables.
 """
 
-__version__ = "0.1.0"
+from family_chores_db import models  # noqa: F401 — registers tables on Base.metadata
+from family_chores_db.base import (
+    Base,
+    make_async_db_url,
+    make_async_engine,
+    make_session_factory,
+    make_sync_db_url,
+)
+
+__all__ = [
+    "Base",
+    "make_async_db_url",
+    "make_async_engine",
+    "make_session_factory",
+    "make_sync_db_url",
+    "models",
+]

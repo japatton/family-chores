@@ -14,8 +14,9 @@ from pathlib import Path
 from alembic import context
 from sqlalchemy import create_engine
 
-from family_chores.db import models  # noqa: F401 — registers tables on Base.metadata
-from family_chores.db.base import Base, _install_sqlite_pragmas, make_sync_db_url
+from family_chores_db import models  # noqa: F401 — registers tables on Base.metadata
+from family_chores_db.base import Base, make_sync_db_url
+from family_chores_db.pragmas import install_sqlite_pragmas
 
 config = context.config
 
@@ -54,7 +55,7 @@ def run_migrations_online() -> None:
     if url is None:
         raise RuntimeError("sqlalchemy.url is not set; env.py bootstrap failed")
     engine = create_engine(url, future=True)
-    _install_sqlite_pragmas(engine)
+    install_sqlite_pragmas(engine)
     with engine.connect() as connection:
         context.configure(
             connection=connection,

@@ -27,7 +27,7 @@ from family_chores.api.schemas import (
     MemberStatsRead,
     MemberUpdate,
 )
-from family_chores.db.models import ActivityLog, Member, MemberStats
+from family_chores_db.models import ActivityLog, Member, MemberStats
 from family_chores.ha.bridge import BridgeProtocol
 from family_chores.security import ParentClaim
 

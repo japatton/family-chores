@@ -7,8 +7,8 @@ from pathlib import Path
 
 from sqlalchemy import create_engine
 
-from family_chores.db.base import Base
-from family_chores.db.startup import bootstrap_db
+from family_chores_db.base import Base
+from family_chores_db.recovery import bootstrap_db
 
 
 def _fake_migrations(db_path: Path) -> None:

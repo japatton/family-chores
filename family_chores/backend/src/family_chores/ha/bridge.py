@@ -34,7 +34,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
-from family_chores.db.models import (
+from family_chores_db.models import (
     Chore,
     ChoreInstance,
     InstanceState,

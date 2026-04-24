@@ -29,7 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
-from family_chores.db.models import ChoreInstance, Member
+from family_chores_db.models import ChoreInstance, Member
 from family_chores.ha.bridge import (
     _INSTANCE_STATE_TO_TODO_STATUS,
     TODO_STATUS_NEEDS_ACTION,

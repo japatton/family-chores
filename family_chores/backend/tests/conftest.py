@@ -22,13 +22,14 @@ if str(_SRC) not in sys.path:
 
 from family_chores.app import create_app  # noqa: E402
 from family_chores.config import Options  # noqa: E402
-from family_chores.db.base import Base, _install_sqlite_pragmas  # noqa: E402
+from family_chores_db.base import Base  # noqa: E402
+from family_chores_db.pragmas import install_sqlite_pragmas  # noqa: E402
 
 
 @pytest.fixture
 async def async_engine(tmp_path) -> AsyncIterator[AsyncEngine]:
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'async.db'}", future=True)
-    _install_sqlite_pragmas(engine.sync_engine)
+    install_sqlite_pragmas(engine.sync_engine)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     try:

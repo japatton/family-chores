@@ -10,10 +10,11 @@ requires-python = ">=3.12"
 authors = [{ name = "Jason Patton" }]
 license = { text = "MIT" }
 dependencies = [
-    # Workspace dep: pure domain logic (recurrence, streaks, points, time).
-    # Added during Phase 2 step 2; the addon's `family_chores.core.*` imports
-    # are being relocated to `family_chores_core.*` in this same commit.
+    # Workspace deps. See DECISIONS §11 for the refactor sequence.
+    #   `family-chores-core`: pure domain logic — added in step 2.
+    #   `family-chores-db`:   ORM + migrations + engine factories — added in step 3.
     "family-chores-core",
+    "family-chores-db",
     "fastapi>=0.115,<0.116",
     # Plain `uvicorn` + the two optional deps we actually use at runtime.
     # Avoids `uvicorn[standard]`, which pulls `watchfiles` (Rust-based);
