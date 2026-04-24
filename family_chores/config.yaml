@@ -1,5 +1,5 @@
 name: Family Chores
-version: "0.2.1"
+version: "0.2.4"
 slug: family_chores
 description: Family chore tracking and rewards, with HA entity bridging.
 arch:

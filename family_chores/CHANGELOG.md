@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] — 2026-04-24
+
+### Added
+
+- **Public-release polish documentation** (originally intended for
+  v0.2.2). New governance files at the repo root: `LICENSE` (MIT),
+  `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`,
+  `.github/ISSUE_TEMPLATE/` (bug + feature request forms + config),
+  and `.github/PULL_REQUEST_TEMPLATE.md`. Repo-root `README.md`
+  rewritten as a public landing page with badges, screenshots, and a
+  documentation map. New `docs/architecture.md` (monorepo layout,
+  package → app dependency arrow, AuthStrategy protocol,
+  household_id tenancy, data flow, testing topology, release
+  topology) and `docs/roadmap.md` (landed, near-term, longer-term,
+  explicitly out of scope). Add-on directory gains a store-facing
+  `family_chores/README.md` (90 lines). Lovelace card picks up
+  `hacs.json`, `info.md`, `CHANGELOG.md`, and a rewritten README
+  with three documented install paths replacing the old "HACS
+  support coming soon" stub. `family_chores/DOCS.md` expanded from
+  83 → 253 lines with new Dashboard integration, Backup and restore,
+  and Privacy sections, plus the troubleshooting FAQ doubled from 3
+  to 6. All documentation-only — no code or behaviour changes; full
+  test suite stayed green at 364 tests.
+- **Replaced placeholder `icon.png` and `logo.png`** (originally
+  intended for v0.2.3). Teal (`#14B8A6`) rounded-square icon with a
+  white checkmark; matching 250×100 wordmark logo with a dark-teal
+  "Family Chores" mark to the right of the icon. Both generated
+  programmatically via Pillow, both well under 3 KB.
+
+### Fixed
+
+- **Re-cut after v0.2.2 + v0.2.3 tag mishaps.** Both prior tags went
+  out with `family_chores/config.yaml` `version:` still pinned at
+  `0.2.1`, so HA Supervisor never offered them as updates — the GHCR
+  images were built and pushed correctly at `:0.2.2` and `:0.2.3`,
+  but Supervisor reads the manifest's `version:` field to decide
+  whether an update exists, and that field never moved. Same
+  root-cause family as the v0.2.0 → v0.2.1 fix below: tag-time
+  version-bump discipline. v0.2.4 is the clean re-cut, with the
+  manifest correctly bumped end-to-end. The v0.2.2 and v0.2.3
+  GitHub Releases are kept (force-deleting tags invites stale-cache
+  trouble) but flagged as broken in their release notes — install
+  v0.2.4 directly.
+
 ## [0.2.1] — 2026-04-24
 
 ### Fixed
