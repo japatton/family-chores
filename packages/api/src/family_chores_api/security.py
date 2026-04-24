@@ -45,6 +45,21 @@ JWT_SECRET_KEY = "jwt_secret"
 PARENT_PIN_HASH_KEY = "parent_pin_hash"
 
 
+def extract_bearer(authorization: str | None) -> str | None:
+    """Pull a bearer token out of an `Authorization` header value, or return None.
+
+    Public helper because both `deps/auth.py` (the in-package shims) and
+    every concrete `AuthStrategy` (the addon's `IngressAuthStrategy`, the
+    saas scaffold's `PlaceholderAuthStrategy`) need to parse the header.
+    """
+    if not authorization:
+        return None
+    parts = authorization.split(None, 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+    return parts[1].strip() or None
+
+
 @dataclass(frozen=True, slots=True)
 class ParentClaim:
     user: str

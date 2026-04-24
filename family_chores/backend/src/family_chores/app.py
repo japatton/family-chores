@@ -21,12 +21,14 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import cast
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from family_chores import __version__
+from family_chores.auth import IngressAuthStrategy
 from family_chores.config import Options, load_options
 from family_chores.ha import HABridge, NoOpBridge, make_client_from_env
 from family_chores.ha.client import HAClient, HAClientError
@@ -91,6 +93,14 @@ def _build_lifespan(opts: Options):  # type: ignore[no-untyped-def]
 
         async with app.state.session_factory() as session:
             app.state.jwt_secret = await ensure_jwt_secret(session)
+
+        # Auth strategy installs after the JWT secret is on app.state — the
+        # strategy reads it lazily via this closure rather than capturing
+        # a stale value, so a future secret-rotation endpoint can flip it
+        # in-place without re-constructing the strategy.
+        app.state.auth_strategy = IngressAuthStrategy(
+            secret_provider=lambda: cast(str, app.state.jwt_secret)
+        )
 
         ha_client = make_client_from_env()
         app.state.ha_client = ha_client
