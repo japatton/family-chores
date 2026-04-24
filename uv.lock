@@ -216,6 +216,7 @@ dependencies = [
     { name = "alembic" },
     { name = "apscheduler" },
     { name = "argon2-cffi" },
+    { name = "family-chores-api" },
     { name = "family-chores-core" },
     { name = "family-chores-db" },
     { name = "fastapi" },
@@ -247,6 +248,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.13,<1.14" },
     { name = "apscheduler", specifier = ">=3.10,<4" },
     { name = "argon2-cffi", specifier = ">=23.1" },
+    { name = "family-chores-api", editable = "packages/api" },
     { name = "family-chores-core", editable = "packages/core" },
     { name = "family-chores-db", editable = "packages/db" },
     { name = "fastapi", specifier = ">=0.115,<0.116" },
@@ -273,14 +275,38 @@ provides-extras = ["dev"]
 name = "family-chores-api"
 version = "0.1.0"
 source = { editable = "packages/api" }
+dependencies = [
+    { name = "argon2-cffi" },
+    { name = "family-chores-core" },
+    { name = "family-chores-db" },
+    { name = "fastapi" },
+    { name = "pydantic" },
+    { name = "pyjwt" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "websockets" },
+]
 
 [package.optional-dependencies]
 dev = [
     { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-httpx" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pytest", marker = "extra == 'dev'", specifier = ">=8.2" }]
+requires-dist = [
+    { name = "argon2-cffi", specifier = ">=23.1" },
+    { name = "family-chores-core", editable = "packages/core" },
+    { name = "family-chores-db", editable = "packages/db" },
+    { name = "fastapi", specifier = ">=0.115,<0.116" },
+    { name = "pydantic", specifier = ">=2.7,<3" },
+    { name = "pyjwt", specifier = ">=2.8" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.2" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
+    { name = "pytest-httpx", marker = "extra == 'dev'", specifier = ">=0.30" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.30,<2.1" },
+    { name = "websockets", specifier = ">=12" },
+]
 provides-extras = ["dev"]
 
 [[package]]

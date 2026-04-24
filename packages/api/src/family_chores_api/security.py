@@ -4,10 +4,23 @@ Threat model (see README): the parent PIN is a soft lock keeping kids out of
 admin, not a security boundary. Use argon2 anyway — it's cheap, available,
 and means a leaked DB doesn't immediately expose a 4-digit PIN.
 
-The JWT secret is minted once at first startup, stashed in `app_config`,
-and held in-memory on `app.state.jwt_secret` for the rest of the run. It
-is never written to disk in plaintext outside the SQLite row, never logged,
-and never returned in an API response.
+**Secret-injection contract (DECISIONS §11 Q3).**
+This module never reads or stashes the JWT signing secret in a
+module-level constant. `mint_parent_token(secret, ...)` and
+`decode_parent_token(secret, ...)` always take the secret as an explicit
+parameter. Each deployment target is responsible for sourcing its own
+secret and passing it in:
+
+  - **Add-on** (`family_chores`): minted on first boot via
+    `ensure_jwt_secret(session)` (below), stashed in the `app_config`
+    SQLite row, cached on `app.state.jwt_secret` by the addon's lifespan.
+  - **Future SaaS** (`apps/saas-backend/`): will read from an env var or
+    secret manager and pass the same string in.
+
+`ensure_jwt_secret` itself wraps the SQLite-backed `app_config` row and is
+therefore DB-aware (which is OK here — `family_chores_db` is a workspace
+dep). The future SaaS won't call `ensure_jwt_secret`; it will populate
+`app.state.jwt_secret` from its own secret source.
 """
 
 from __future__ import annotations

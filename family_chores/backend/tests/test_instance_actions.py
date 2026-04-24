@@ -11,7 +11,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from family_chores.api.errors import (
+from family_chores_api.errors import (
     InvalidStateError,
     NotFoundError,
     UndoWindowExpiredError,
@@ -24,7 +24,7 @@ from family_chores_db.models import (
     Member,
     RecurrenceType,
 )
-from family_chores.services.instance_actions import (
+from family_chores_api.services.instance_actions import (
     UNDO_WINDOW_SECONDS,
     adjust_member_points,
     approve_instance,

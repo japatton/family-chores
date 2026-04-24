@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from family_chores.api.deps import (
+from family_chores_api.deps import (
     get_jwt_secret,
     get_remote_user,
     get_session,
@@ -13,13 +13,13 @@ from family_chores.api.deps import (
     maybe_parent,
     require_parent,
 )
-from family_chores.api.errors import (
+from family_chores_api.errors import (
     PinAlreadySetError,
     PinInvalidError,
     PinNotSetError,
 )
-from family_chores.api.events import EVT_PIN_CLEARED, EVT_PIN_SET, WSManager
-from family_chores.api.schemas import (
+from family_chores_api.events import EVT_PIN_CLEARED, EVT_PIN_SET, WSManager
+from family_chores_api.schemas import (
     ClearPinRequest,
     SetPinRequest,
     TokenResponse,
@@ -27,7 +27,7 @@ from family_chores.api.schemas import (
     WhoAmI,
 )
 from family_chores_db.models import ActivityLog
-from family_chores.security import (
+from family_chores_api.security import (
     ParentClaim,
     clear_pin_hash,
     get_pin_hash,

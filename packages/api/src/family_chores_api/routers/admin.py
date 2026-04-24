@@ -6,43 +6,42 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from family_chores.api.deps import (
+from family_chores_api.bridge import BridgeProtocol
+from family_chores_api.deps import (
     get_bridge,
     get_effective_timezone,
-    get_options,
     get_remote_user,
     get_session,
+    get_week_starts_on,
     get_ws_manager,
     require_parent,
 )
-from family_chores.api.events import EVT_STATS_REBUILT, WSManager
-from family_chores.api.schemas import (
+from family_chores_api.events import EVT_STATS_REBUILT, WSManager
+from family_chores_api.schemas import (
     ActivityLogEntry,
     ActivityLogPage,
 )
-from family_chores.config import Options
+from family_chores_api.services.stats_service import recompute_stats_for_member
 from family_chores_core.time import local_today
 from family_chores_db.models import ActivityLog, Member
-from family_chores.ha.bridge import BridgeProtocol
-from family_chores.services.stats_service import recompute_stats_for_member
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_parent)])
 
 
 @router.post("/rebuild-stats")
 async def rebuild_stats(
-    opts: Options = Depends(get_options),
     session: AsyncSession = Depends(get_session),
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
     bridge: BridgeProtocol = Depends(get_bridge),
     tz: str = Depends(get_effective_timezone),
+    week_starts_on: str = Depends(get_week_starts_on),
 ) -> dict[str, int]:
     today = local_today(tz)
     ids = list((await session.execute(select(Member.id))).scalars().all())
     for mid in ids:
         await recompute_stats_for_member(
-            session, mid, today=today, week_starts_on=opts.week_starts_on
+            session, mid, today=today, week_starts_on=week_starts_on
         )
     session.add(ActivityLog(actor=user, action="stats_rebuilt", payload={"members": len(ids)}))
     await session.commit()

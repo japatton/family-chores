@@ -19,18 +19,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from family_chores.api.deps import (
+from family_chores_api.deps import (
     get_bridge,
     get_effective_timezone,
-    get_options,
     get_remote_user,
     get_session,
+    get_week_starts_on,
     get_ws_manager,
     require_parent,
 )
-from family_chores.api.errors import NotFoundError
-from family_chores.api.events import EVT_INSTANCE_UPDATED, WSManager
-from family_chores.api.schemas import (
+from family_chores_api.errors import NotFoundError
+from family_chores_api.events import EVT_INSTANCE_UPDATED, WSManager
+from family_chores_api.schemas import (
     AdjustPointsRequest,
     InstanceRead,
     MemberStatsRead,
@@ -39,7 +39,6 @@ from family_chores.api.schemas import (
     TodayMember,
     TodayView,
 )
-from family_chores.config import Options
 from family_chores_core.time import local_today
 from family_chores_db.models import (
     Chore,
@@ -47,9 +46,9 @@ from family_chores_db.models import (
     InstanceState,
     Member,
 )
-from family_chores.ha.bridge import BridgeProtocol
-from family_chores.security import ParentClaim
-from family_chores.services.instance_actions import (
+from family_chores_api.bridge import BridgeProtocol
+from family_chores_api.security import ParentClaim
+from family_chores_api.services.instance_actions import (
     adjust_member_points,
     approve_instance,
     complete_instance,
@@ -57,7 +56,7 @@ from family_chores.services.instance_actions import (
     skip_instance,
     undo_complete,
 )
-from family_chores.services.stats_service import recompute_stats_for_member
+from family_chores_api.services.stats_service import recompute_stats_for_member
 
 router = APIRouter(prefix="/api", tags=["instances"])
 
@@ -108,12 +107,12 @@ async def _finalize_action(
     session: AsyncSession,
     inst: ChoreInstance,
     *,
-    opts: Options,
+    week_starts_on: str,
     tz: str,
 ) -> None:
     today = local_today(tz)
     await recompute_stats_for_member(
-        session, inst.member_id, today=today, week_starts_on=opts.week_starts_on
+        session, inst.member_id, today=today, week_starts_on=week_starts_on
     )
     await session.commit()
 
@@ -160,11 +159,11 @@ async def complete(
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
     bridge: BridgeProtocol = Depends(get_bridge),
-    opts: Options = Depends(get_options),
+    week_starts_on: str = Depends(get_week_starts_on),
     tz: str = Depends(get_effective_timezone),
 ) -> InstanceRead:
     inst = await complete_instance(session, instance_id, actor=user)
-    await _finalize_action(session, inst, opts=opts, tz=tz)
+    await _finalize_action(session, inst, week_starts_on=week_starts_on, tz=tz)
     event = EVENT_COMPLETED if inst.state is InstanceState.DONE else None
     _notify_bridge(bridge, inst, event=event)
     await _broadcast_updated(ws, inst)
@@ -178,11 +177,11 @@ async def undo(
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
     bridge: BridgeProtocol = Depends(get_bridge),
-    opts: Options = Depends(get_options),
+    week_starts_on: str = Depends(get_week_starts_on),
     tz: str = Depends(get_effective_timezone),
 ) -> InstanceRead:
     inst = await undo_complete(session, instance_id, actor=user)
-    await _finalize_action(session, inst, opts=opts, tz=tz)
+    await _finalize_action(session, inst, week_starts_on=week_starts_on, tz=tz)
     _notify_bridge(bridge, inst)
     await _broadcast_updated(ws, inst)
     return InstanceRead.model_validate(inst)
@@ -195,12 +194,12 @@ async def approve(
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
     bridge: BridgeProtocol = Depends(get_bridge),
-    opts: Options = Depends(get_options),
+    week_starts_on: str = Depends(get_week_starts_on),
     tz: str = Depends(get_effective_timezone),
     _parent: ParentClaim = Depends(require_parent),
 ) -> InstanceRead:
     inst = await approve_instance(session, instance_id, actor=user)
-    await _finalize_action(session, inst, opts=opts, tz=tz)
+    await _finalize_action(session, inst, week_starts_on=week_starts_on, tz=tz)
     _notify_bridge(bridge, inst, event=EVENT_APPROVED)
     await _broadcast_updated(ws, inst)
     return InstanceRead.model_validate(inst)
@@ -214,12 +213,12 @@ async def reject(
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
     bridge: BridgeProtocol = Depends(get_bridge),
-    opts: Options = Depends(get_options),
+    week_starts_on: str = Depends(get_week_starts_on),
     tz: str = Depends(get_effective_timezone),
     _parent: ParentClaim = Depends(require_parent),
 ) -> InstanceRead:
     inst = await reject_instance(session, instance_id, actor=user, reason=body.reason)
-    await _finalize_action(session, inst, opts=opts, tz=tz)
+    await _finalize_action(session, inst, week_starts_on=week_starts_on, tz=tz)
     _notify_bridge(bridge, inst)
     await _broadcast_updated(ws, inst)
     return InstanceRead.model_validate(inst)
@@ -233,12 +232,12 @@ async def skip(
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
     bridge: BridgeProtocol = Depends(get_bridge),
-    opts: Options = Depends(get_options),
+    week_starts_on: str = Depends(get_week_starts_on),
     tz: str = Depends(get_effective_timezone),
     _parent: ParentClaim = Depends(require_parent),
 ) -> InstanceRead:
     inst = await skip_instance(session, instance_id, actor=user, reason=body.reason)
-    await _finalize_action(session, inst, opts=opts, tz=tz)
+    await _finalize_action(session, inst, week_starts_on=week_starts_on, tz=tz)
     _notify_bridge(bridge, inst)
     await _broadcast_updated(ws, inst)
     return InstanceRead.model_validate(inst)

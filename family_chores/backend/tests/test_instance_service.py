@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select
 
 from family_chores_db.models import Chore, ChoreInstance, InstanceState, Member, RecurrenceType
-from family_chores.services.instance_service import generate_instances, mark_overdue
+from family_chores_api.services.instance_service import generate_instances, mark_overdue
 
 
 async def _seed_member(session, slug="alice"):

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from family_chores.api.events import WSManager
+from family_chores_api.events import WSManager
 
 router = APIRouter()
 

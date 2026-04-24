@@ -9,11 +9,10 @@ import jwt
 from fastapi import Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from family_chores.api.errors import AuthRequiredError, ForbiddenError
-from family_chores.api.events import WSManager
-from family_chores.config import Options
-from family_chores.ha.bridge import BridgeProtocol
-from family_chores.security import ParentClaim, decode_parent_token
+from family_chores_api.bridge import BridgeProtocol
+from family_chores_api.errors import AuthRequiredError, ForbiddenError
+from family_chores_api.events import WSManager
+from family_chores_api.security import ParentClaim, decode_parent_token
 
 
 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
@@ -26,10 +25,6 @@ def get_ws_manager(request: Request) -> WSManager:
     return cast(WSManager, request.app.state.ws_manager)
 
 
-def get_options(request: Request) -> Options:
-    return cast(Options, request.app.state.options)
-
-
 def get_jwt_secret(request: Request) -> str:
     return cast(str, request.app.state.jwt_secret)
 
@@ -40,12 +35,30 @@ def get_bridge(request: Request) -> BridgeProtocol:
 
 
 def get_effective_timezone(request: Request) -> str:
-    """Cached HA tz (if fetched at startup), override, or UTC."""
+    """Effective IANA tz, set by the deployment target's lifespan.
+
+    The add-on lifespan (`family_chores.app._lifespan`) computes this from
+    the `timezone` option, the HA `/api/config → time_zone` fetch, or UTC
+    as a final fallback (decision §4 #44). Routers see only the resolved
+    string. Returns `"UTC"` if the lifespan didn't run (test-only path).
+    """
     cached = getattr(request.app.state, "effective_timezone", None)
     if isinstance(cached, str) and cached:
         return cached
-    opts: Options = request.app.state.options
-    return opts.effective_timezone
+    return "UTC"
+
+
+def get_week_starts_on(request: Request) -> str:
+    """Configured first day of the week (`"monday"` or `"sunday"`).
+
+    Set by the deployment target's lifespan from its options object so
+    `packages/api` doesn't need to know the addon's `Options` schema.
+    Defaults to `"monday"` if unset (matches addon's default in §4 #19).
+    """
+    cached = getattr(request.app.state, "week_starts_on", None)
+    if isinstance(cached, str) and cached:
+        return cached
+    return "monday"
 
 
 def get_remote_user(request: Request) -> str:

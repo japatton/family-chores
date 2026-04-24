@@ -34,6 +34,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
+from family_chores_api.bridge import BridgeProtocol
 from family_chores_db.models import (
     Chore,
     ChoreInstance,
@@ -86,22 +87,11 @@ def sensor_entity_for_member_streak(slug: str) -> str:
 SENSOR_PENDING_APPROVALS = "sensor.family_chores_pending_approvals"
 
 
-class BridgeProtocol:
-    """Interface exposed to routers / services. Implemented by HABridge and NoOpBridge."""
-
-    def notify_member_dirty(self, member_id: int) -> None: ...
-
-    def notify_approvals_dirty(self) -> None: ...
-
-    def notify_instance_changed(self, instance_id: int) -> None: ...
-
-    def enqueue_event(self, event_type: str, payload: dict[str, Any]) -> None: ...
-
-    async def force_flush(self) -> None: ...
-
-    async def start(self) -> None: ...
-
-    async def stop(self) -> None: ...
+# `BridgeProtocol` was moved to `family_chores_api.bridge` in Phase 2
+# step 4 — packages/api can't import from the addon (DECISIONS §11 Q4
+# dep-arrow rule). The two concrete implementations below stay here
+# because they own the HA client; they'll move with the rest of the addon
+# in step 6 when the addon flattens to family_chores/src/family_chores_addon/.
 
 
 class NoOpBridge(BridgeProtocol):

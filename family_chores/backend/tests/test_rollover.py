@@ -15,7 +15,7 @@ from family_chores_db.models import (
     MemberStats,
     RecurrenceType,
 )
-from family_chores.services.rollover_service import run_rollover
+from family_chores_api.services.rollover_service import run_rollover
 
 
 async def _seed_member(session, slug="alice", requires_approval=False):

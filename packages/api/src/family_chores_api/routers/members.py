@@ -7,29 +7,29 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from family_chores.api.deps import (
+from family_chores_api.deps import (
     get_bridge,
     get_remote_user,
     get_session,
     get_ws_manager,
     require_parent,
 )
-from family_chores.api.errors import ConflictError, NotFoundError
-from family_chores.api.events import (
+from family_chores_api.errors import ConflictError, NotFoundError
+from family_chores_api.events import (
     EVT_MEMBER_CREATED,
     EVT_MEMBER_DELETED,
     EVT_MEMBER_UPDATED,
     WSManager,
 )
-from family_chores.api.schemas import (
+from family_chores_api.schemas import (
     MemberCreate,
     MemberRead,
     MemberStatsRead,
     MemberUpdate,
 )
 from family_chores_db.models import ActivityLog, Member, MemberStats
-from family_chores.ha.bridge import BridgeProtocol
-from family_chores.security import ParentClaim
+from family_chores_api.bridge import BridgeProtocol
+from family_chores_api.security import ParentClaim
 
 router = APIRouter(prefix="/api/members", tags=["members"])
 

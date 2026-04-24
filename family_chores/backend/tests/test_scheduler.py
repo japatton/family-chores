@@ -22,7 +22,7 @@ from family_chores.scheduler import (
     RECONCILE_JOB_ID,
     make_scheduler,
 )
-from family_chores.services.rollover_service import run_rollover
+from family_chores_api.services.rollover_service import run_rollover
 
 
 def test_scheduler_registers_both_jobs(async_session_factory):

@@ -7,34 +7,32 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from family_chores.api.deps import (
+from family_chores_api.deps import (
     get_bridge,
     get_effective_timezone,
-    get_options,
     get_remote_user,
     get_session,
     get_ws_manager,
     require_parent,
 )
-from family_chores.api.errors import ConflictError, NotFoundError
-from family_chores.api.events import (
+from family_chores_api.errors import ConflictError, NotFoundError
+from family_chores_api.events import (
     EVT_CHORE_CREATED,
     EVT_CHORE_DELETED,
     EVT_CHORE_UPDATED,
     WSManager,
 )
-from family_chores.api.schemas import (
+from family_chores_api.schemas import (
     ChoreCreate,
     ChoreRead,
     ChoreUpdate,
     validate_recurrence_config,
 )
-from family_chores.config import Options
 from family_chores_core.time import local_today
 from family_chores_db.models import ActivityLog, Chore, Member
-from family_chores.ha.bridge import BridgeProtocol
-from family_chores.security import ParentClaim
-from family_chores.services.instance_service import generate_instances
+from family_chores_api.bridge import BridgeProtocol
+from family_chores_api.security import ParentClaim
+from family_chores_api.services.instance_service import generate_instances
 
 router = APIRouter(prefix="/api/chores", tags=["chores"])
 
@@ -107,7 +105,6 @@ async def create_chore(
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
     bridge: BridgeProtocol = Depends(get_bridge),
-    opts: Options = Depends(get_options),
     tz: str = Depends(get_effective_timezone),
     _parent: ParentClaim = Depends(require_parent),
 ) -> ChoreRead:
@@ -153,7 +150,6 @@ async def update_chore(
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
     bridge: BridgeProtocol = Depends(get_bridge),
-    opts: Options = Depends(get_options),
     tz: str = Depends(get_effective_timezone),
     _parent: ParentClaim = Depends(require_parent),
 ) -> ChoreRead:

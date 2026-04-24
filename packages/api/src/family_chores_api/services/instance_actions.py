@@ -13,7 +13,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from family_chores.api.errors import (
+from family_chores_api.errors import (
     InvalidStateError,
     NotFoundError,
     UndoWindowExpiredError,
