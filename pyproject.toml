@@ -1,0 +1,62 @@
+################################################################################
+# Family Chores — monorepo workspace root.
+#
+# See DECISIONS §11 for the Phase 2 refactor that introduced this workspace.
+#
+# This is a virtual workspace (uv `package = false`) — the root is purely a
+# workspace coordinator; it produces no distribution of its own. Each workspace
+# member has its own pyproject.toml with its own build backend.
+#
+# Workspace membership evolves across the refactor steps:
+#   - Step 1 (this commit): packages/{core,db,api} + apps/saas-backend scaffolds.
+#   - Step 6: the add-on joins as `family_chores` (pyproject lives at
+#     `family_chores/pyproject.toml` after the `backend/` wrapper is flattened).
+################################################################################
+
+[project]
+name = "family-chores-workspace"
+version = "0"
+description = "Family Chores monorepo workspace root (virtual; see DECISIONS §11)."
+requires-python = ">=3.12"
+
+[tool.uv]
+# Virtual workspace root — no build output of its own.
+package = false
+
+[tool.uv.workspace]
+members = [
+    "packages/core",
+    "packages/db",
+    "packages/api",
+    "apps/saas-backend",
+    # The add-on lives at family_chores/ at the repo root rather than under
+    # apps/ — HA Supervisor expects each add-on as a direct child of the
+    # repo (see DECISIONS §11 "Layout asymmetry"). The Python package was
+    # flattened to family_chores/src/family_chores_addon/ in step 6 (Q8).
+    "family_chores",
+]
+
+[tool.uv.sources]
+# Workspace members consume each other by name (e.g. `family-chores-core` in
+# a member's [project.dependencies]) and uv routes the resolution through
+# the workspace instead of PyPI. Declared at the root so every member opts
+# in automatically without restating the source.
+family-chores-core = { workspace = true }
+family-chores-db = { workspace = true }
+family-chores-api = { workspace = true }
+
+[tool.pytest.ini_options]
+# `importlib` mode is required whenever multiple workspace members each have
+# a top-level `tests/` package — otherwise pytest resolves `tests.test_smoke`
+# to the first `tests/__init__.py` it imports and blows up on collection for
+# the rest. Per-package `pytest` invocations (what CI runs) don't hit this,
+# but root-level aggregate runs do. Setting it here keeps every invocation
+# consistent regardless of cwd.
+addopts = ["--import-mode=importlib"]
+# Pytest only honors the FIRST ini-like file walked up from the rootdir, so
+# when an aggregate run is invoked from the repo root the addon's own
+# `family_chores/backend/pyproject.toml` `[tool.pytest.ini_options]` block
+# is ignored. Every async-using config has to be replicated here for the
+# aggregate run to behave the same as per-package runs. Currently that's
+# just `asyncio_mode = "auto"`.
+asyncio_mode = "auto"

@@ -9,7 +9,7 @@ __pycache__
 node_modules
 frontend/dist
 lovelace-card/dist
-backend/tests
+tests
 .pytest_cache
 .mypy_cache
 .ruff_cache

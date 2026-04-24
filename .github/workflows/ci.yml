@@ -12,103 +12,261 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  backend:
-    name: Backend — lint, typecheck, tests
+  # ─── Python — per-package matrix ─────────────────────────────────────────
+  # Each Python workspace member gets its own job so failures point at one
+  # package and runs are properly parallelised. uv `--all-packages` is used
+  # at sync time so every workspace dep is editable-installed (the addon's
+  # tests need every package; per-package isolation would mean per-package
+  # uv calls and slower jobs).
+  python:
+    name: Python — ${{ matrix.member.label }}
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: family_chores/backend
+    strategy:
+      fail-fast: false
+      matrix:
+        member:
+          - label: core
+            tests: packages/core/tests
+          - label: db
+            tests: packages/db/tests
+          - label: api
+            tests: packages/api/tests
+          - label: addon
+            tests: family_chores/tests
+          - label: saas
+            tests: apps/saas-backend/tests
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
         with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: family_chores/backend/pyproject.toml
+          enable-cache: true
 
-      - name: Install backend deps
-        # `.[dev]` inside the cd'd directory sidesteps pip's
-        # `path/[extras]` parsing quirk we'd hit with the absolute form.
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e '.[dev]'
-
-      - name: ruff check
-        run: ruff check .
-
-      - name: mypy --strict
-        run: mypy src --strict
+      - name: Sync workspace
+        run: uv sync --all-packages --extra dev
 
       - name: pytest
-        run: pytest tests/ -q
+        run: uv run pytest ${{ matrix.member.tests }} -q
 
+  # ─── Architecture tests at the workspace root ────────────────────────────
+  python-arch:
+    name: Python — architecture tests (dep-arrows + packages-clean)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Sync workspace
+        run: uv sync --all-packages --extra dev
+
+      - name: pytest tests/
+        run: uv run pytest tests/ -q
+
+  # ─── Python lint — single job, ruff across the whole workspace ───────────
+  # Each package's [tool.ruff] block is honoured by walking up from the
+  # file being linted. mypy --strict is run only on the addon for now —
+  # cross-package strict mypy under uv workspaces needs more setup than
+  # this refactor covers.
+  python-lint:
+    name: Python — ruff + mypy (addon)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Sync workspace
+        run: uv sync --all-packages --extra dev
+
+      - name: ruff check (whole workspace)
+        run: uv run ruff check packages family_chores/src family_chores/tests apps/saas-backend/src apps/saas-backend/tests tests
+
+      - name: mypy --strict (addon)
+        working-directory: family_chores
+        run: uv run mypy src --strict
+
+  # ─── Frontend — per-package matrix ───────────────────────────────────────
   frontend:
-    name: Frontend — lint, typecheck, tests, build
+    name: Frontend — ${{ matrix.member.label }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        member:
+          - label: addon-frontend
+            dir: family_chores/frontend
+            test_cmd: pnpm test
+            lint_cmd: pnpm run lint
+            typecheck_cmd: pnpm run typecheck
+            build_cmd: pnpm run build
+            artefact_name: spa-dist
+            artefact_path: family_chores/src/family_chores_addon/static
+          - label: web
+            dir: apps/web
+            test_cmd: pnpm test
+            lint_cmd: ""
+            typecheck_cmd: ""
+            build_cmd: pnpm run build
+            artefact_name: web-dist
+            artefact_path: apps/web/dist
+          - label: lovelace-card
+            dir: lovelace-card
+            test_cmd: ""
+            lint_cmd: ""
+            typecheck_cmd: pnpm run typecheck
+            build_cmd: pnpm run build
+            artefact_name: family-chores-card
+            artefact_path: lovelace-card/dist/family-chores-card.js
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: family_chores/frontend/package-lock.json
 
-      - name: Install deps
-        working-directory: family_chores/frontend
-        run: npm ci
+      - name: Activate pnpm
+        run: corepack enable && corepack prepare pnpm@9.15.0 --activate
 
-      - name: ESLint
-        working-directory: family_chores/frontend
-        run: npm run lint
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile --filter ${{ matrix.member.label == 'addon-frontend' && 'family-chores-frontend' || matrix.member.label == 'web' && 'family-chores-web' || 'family-chores-card' }}
+
+      - name: Lint
+        if: matrix.member.lint_cmd != ''
+        working-directory: ${{ matrix.member.dir }}
+        run: ${{ matrix.member.lint_cmd }}
 
       - name: Typecheck
-        working-directory: family_chores/frontend
-        run: npm run typecheck
+        if: matrix.member.typecheck_cmd != ''
+        working-directory: ${{ matrix.member.dir }}
+        run: ${{ matrix.member.typecheck_cmd }}
 
-      - name: Vitest
-        working-directory: family_chores/frontend
-        run: npm test
+      - name: Tests
+        if: matrix.member.test_cmd != ''
+        working-directory: ${{ matrix.member.dir }}
+        run: ${{ matrix.member.test_cmd }}
 
       - name: Build
-        working-directory: family_chores/frontend
-        run: npm run build
+        working-directory: ${{ matrix.member.dir }}
+        run: ${{ matrix.member.build_cmd }}
 
-      - name: Upload built SPA artefact
+      - name: Upload artefact
         uses: actions/upload-artifact@v4
         with:
-          name: spa-dist
-          path: family_chores/backend/src/family_chores/static/
+          name: ${{ matrix.member.artefact_name }}
+          path: ${{ matrix.member.artefact_path }}
           retention-days: 7
 
-  lovelace-card:
-    name: Lovelace card — typecheck + build
+  # ─── Add-on Docker image build (PR sanity; multi-arch lives in release.yml) ─
+  # Builds amd64 only — fast feedback on Dockerfile changes. Loads the
+  # image into the local daemon so the integration job can use it without
+  # re-pulling.
+  build-addon-image:
+    name: Add-on image — amd64 build
     runs-on: ubuntu-latest
+    needs: [python, frontend]
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: lovelace-card/package-lock.json
-
-      - name: Install deps
-        working-directory: lovelace-card
-        run: npm ci
-
-      - name: Typecheck
-        working-directory: lovelace-card
-        run: npm run typecheck
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Build
-        working-directory: lovelace-card
-        run: npm run build
+        uses: docker/build-push-action@v6
+        with:
+          # Repo root context — Dockerfile copies workspace packages
+          # from packages/ and the pnpm lockfile from the workspace
+          # root. See Dockerfile header for rationale.
+          context: .
+          file: ./family_chores/Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: family-chores:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Upload card artefact
+      - name: Save image for the integration job
+        run: docker save family-chores:ci -o /tmp/family-chores.tar
+
+      - name: Upload image artefact
         uses: actions/upload-artifact@v4
         with:
-          name: family-chores-card
-          path: lovelace-card/dist/family-chores-card.js
-          retention-days: 7
+          name: family-chores-image
+          path: /tmp/family-chores.tar
+          retention-days: 1
+
+  # ─── Integration test: boot the image, hit /api/health and /api/info ─────
+  # New in step 12. Verifies the addon image actually boots end-to-end —
+  # the lifespan runs, alembic applies, /api/health returns 200, /api/info
+  # surfaces ha_connected=false (no SUPERVISOR_TOKEN set in CI).
+  #
+  # No Supervisor stub needed: make_client_from_env returns None when
+  # SUPERVISOR_TOKEN is absent, the lifespan installs NoOpBridge, and the
+  # app comes up cleanly. A future stub could verify HA-bridged behavior
+  # (todo sync, sensor publish) but isn't required for "the image boots".
+  integration-addon:
+    name: Add-on image — integration boot test
+    runs-on: ubuntu-latest
+    needs: [build-addon-image]
+    steps:
+      - name: Download image artefact
+        uses: actions/download-artifact@v4
+        with:
+          name: family-chores-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/family-chores.tar
+
+      - name: Run container
+        run: |
+          mkdir -p /tmp/data
+          docker run -d --rm \
+            --name fc-int \
+            -p 8099:8099 \
+            -v /tmp/data:/data \
+            -e FAMILY_CHORES_SKIP_SCHEDULER=1 \
+            family-chores:ci
+
+      - name: Wait for /api/health
+        # 30 attempts × 1 s = 30 s budget. uvicorn boot + lifespan
+        # (DB bootstrap, JWT secret mint) is typically <2 s.
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8099/api/health >/dev/null 2>&1; then
+              echo "ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "addon never became healthy"
+          docker logs fc-int
+          exit 1
+
+      - name: Verify /api/health
+        run: |
+          body=$(curl -fsS http://localhost:8099/api/health)
+          echo "${body}"
+          echo "${body}" | grep -q '"status":"ok"'
+
+      - name: Verify /api/info reports ha_connected=false
+        run: |
+          body=$(curl -fsS http://localhost:8099/api/info)
+          echo "${body}"
+          echo "${body}" | grep -q '"ha_connected":false'
+
+      - name: Show container logs
+        if: always()
+        run: docker logs fc-int
+
+      - name: Stop container
+        if: always()
+        run: docker stop fc-int || true

@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "family-chores-api"
+version = "0.1.0"
+description = "FastAPI routers, services, schemas, WS, and error envelope for Family Chores (see DECISIONS §11)."
+requires-python = ">=3.12"
+authors = [{ name = "Jason Patton" }]
+license = { text = "MIT" }
+dependencies = [
+    # Workspace deps — API layer depends on pure domain logic + ORM.
+    "family-chores-core",
+    "family-chores-db",
+    # HTTP + async ORM surface
+    "fastapi>=0.115,<0.116",
+    "sqlalchemy[asyncio]>=2.0.30,<2.1",
+    # Auth primitives
+    "argon2-cffi>=23.1",
+    "pyjwt>=2.8",
+    # Pydantic is a transitive of fastapi but the schemas layer uses it
+    # directly — pin it explicitly so dependency resolution doesn't drift.
+    "pydantic>=2.7,<3",
+    # WebSocket server support for `starlette.websockets` (fastapi's dep).
+    "websockets>=12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "pytest-httpx>=0.30",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# PEP 561 marker (see packages/core/pyproject.toml).
+family_chores_api = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

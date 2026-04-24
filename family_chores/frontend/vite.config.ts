@@ -10,7 +10,7 @@ export default defineConfig({
   plugins: [react()],
   base: './',
   build: {
-    outDir: resolve(__dirname, '../backend/src/family_chores/static'),
+    outDir: resolve(__dirname, '../src/family_chores_addon/static'),
     emptyOutDir: true,
     sourcemap: false,
     target: 'es2022',
