@@ -713,6 +713,14 @@ No direct conflicts found. Specifically:
   - **Test count: 333** (= 322 from step 9 + **11 new saas tests**: 1 `__version__` smoke + 1 `/api/health` 200 + 10 parametrized 501 cases on tenant-scoped routes — but the existing 1-test smoke was replaced, so net delta is +11 - 1 = +10... let me recount: actually 322 + 11 = 333 because the parametrized one expanded the file's collection from 1 to 12). The factory-composability assurance is the real value: a future router or dep that implicitly assumes the addon's `IngressAuthStrategy` will fail one of these tests on the saas side before reaching prod.
   - **TODO_POST_REFACTOR additions:** none (the AppConfig-PK and Member.slug-uniqueness items from step 9 still apply; nothing new surfaced).
 
+- **Step 11 — 2026-04-23, commit `8ee93e4`.** `apps/web/` filled in with a real Vite + React + TypeScript scaffold. New files: `package.json` (with proper deps + scripts), `vite.config.ts` (React plugin + vitest config keyed off happy-dom), `tsconfig.json` (mirrors the addon frontend's strict-mode settings), `index.html`, `src/main.tsx`, `src/App.tsx` (renders the "Coming soon" placeholder + a link to the GitHub repo), `tests/App.test.tsx` (2 vitest assertions: heading renders, repository link is present). Outcomes:
+  - **`pnpm install` was a no-op at the lockfile level** ("Already up to date — resolved 363, reused 317") because every dep `apps/web` declares (`react`, `react-dom`, `vitest`, `happy-dom`, `@vitejs/plugin-react`, `@testing-library/react`, etc.) is already resolved in the workspace via `family_chores/frontend`. pnpm shared its global store; no extra disk hit.
+  - **`pnpm --filter family-chores-web build` produces a 143 KB JS bundle (46 KB gzipped)** in 315 ms across 30 transformed modules. The addon frontend's bundle is comparable, so the toolchain is consistent.
+  - **2/2 vitest tests pass** in 561 ms. Kept tests minimal — heading + link presence — since `App.tsx` is a deliberate placeholder.
+  - **No Tailwind, no router, no TanStack Query.** Step 11 is *scaffold*, not *Phase 3 web app*. The addon frontend's `package.json` declares ~15 deps for the kid-tablet UX; the web placeholder gets by with `react` + `react-dom` + the test/build toolchain. Adding more would invite scope creep and lock in choices that should wait for the real Phase-3 design.
+  - **Workspace test suite total: 28 frontend** (26 addon + 2 web). Python tests unchanged at 333.
+  - **TODO_POST_REFACTOR additions:** none.
+
 ### Stop-line
 
 Plan is drafted. **Pausing here for user review per prompt §11.** Once approved, I'll load `TodoWrite`, create one todo per step (1–13), and start with step 1 (scaffolds + workspace tooling).
