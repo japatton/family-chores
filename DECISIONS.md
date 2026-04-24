@@ -686,6 +686,15 @@ No direct conflicts found. Specifically:
   - **Python test suite unchanged at 295.** Frontend changes don't touch any Python code; the dep-arrow + packages-clean tests still pass on every shared-package file.
   - **TODO_POST_REFACTOR additions:** none. The Docker-context limitation is logged in this DECISIONS entry + as a comment in the Dockerfile itself; step 12 owns the fix.
 
+- **Step 8 — 2026-04-23, commit `4edb4ce`.** New Alembic migration `0003_add_household_id` (down_revision `0002_member_ha_todo`) adds a nullable `household_id VARCHAR(36)` column + index to all 7 tenant-scoped tables (`members`, `chores`, `chore_assignments`, `chore_instances`, `member_stats`, `activity_log`, `app_config`). Mirror columns added to every model class as `Mapped[str | None] = mapped_column(String(36))`. Outcomes:
+  - **Migration is deliberately a no-op for existing data.** No backfill, no NOT NULL constraint. Existing rows get NULL, which the (yet-to-be-written, step 9) `scoped()` service-layer helper interprets as "no household filter" — query results stay byte-identical to pre-migration behavior. A future migration (after the SaaS is real and every row has a real household) will flip the column to NOT NULL.
+  - **Index goes on every table even though only the SaaS-side query plan needs it.** The add-on's queries pass `None` and rely on `scoped(col, None) → col.is_(None)` which doesn't benefit from the index. Costs a few KB of B-tree per table; cheap insurance for the SaaS path.
+  - **`ChoreAssignment` got a `household_id` of its own** even though it's a junction table — avoids a join-through-chore-or-member when the SaaS scopes assignment lookups.
+  - **No `index=True` on the model columns.** SQLAlchemy's auto-naming for `index=True` is `ix_<column>` per-table, which would collide as 7 tables each tried to declare an index named `ix_household_id`. The migration explicitly creates `ix_<table>_household_id`; conftest's `Base.metadata.create_all` skips it (tests don't depend on the index for correctness).
+  - **`packages/db/tests/test_migration_0003.py` is the first test in the suite that actually invokes Alembic** — every other test uses `Base.metadata.create_all` for speed. 12 cases: 5 functional (upgrade adds column, upgrade adds index, existing rows are NULL, downgrade is non-destructive, upgrade-down-up is idempotent) + 7 parametrized one-per-table (varchar(36) + nullable + not-PK).
+  - **Test count: 309** (= 218 backend baseline + **12 new migration tests** + 1 saas-stub + 78 architecture-test cases). Architecture grew by 1 (dep-arrow walks the new migration file). Backend split unchanged at 57 core + 19 db (original) + 142 addon. The 12 migration tests live in `packages/db/tests/` — same package as the migration code.
+  - **TODO_POST_REFACTOR additions:** none.
+
 ### Stop-line
 
 Plan is drafted. **Pausing here for user review per prompt §11.** Once approved, I'll load `TodoWrite`, create one todo per step (1–13), and start with step 1 (scaffolds + workspace tooling).

@@ -93,6 +93,9 @@ class Member(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utcnow, onupdate=utcnow
     )
+    # Tenant scope (step 8). NULL in single-tenant add-on mode — the
+    # service-layer `scoped()` helper (step 9) treats NULL as "no filter".
+    household_id: Mapped[str | None] = mapped_column(String(36))
 
     assigned_chores: Mapped[list[Chore]] = relationship(
         secondary="chore_assignments", back_populates="assigned_members"
@@ -126,6 +129,8 @@ class Chore(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utcnow, onupdate=utcnow
     )
+    # Tenant scope (step 8). See `Member.household_id`.
+    household_id: Mapped[str | None] = mapped_column(String(36))
 
     __table_args__ = (CheckConstraint("points >= 0", name="ck_chores_points_nonneg"),)
 
@@ -146,6 +151,9 @@ class ChoreAssignment(Base):
     member_id: Mapped[int] = mapped_column(
         ForeignKey("members.id", ondelete="CASCADE"), primary_key=True
     )
+    # Tenant scope (step 8). Stored on the join row directly so scoped
+    # queries don't need a join through chore or member.
+    household_id: Mapped[str | None] = mapped_column(String(36))
 
 
 class ChoreInstance(Base):
@@ -171,6 +179,8 @@ class ChoreInstance(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utcnow, onupdate=utcnow
     )
+    # Tenant scope (step 8). See `Member.household_id`.
+    household_id: Mapped[str | None] = mapped_column(String(36))
 
     __table_args__ = (
         UniqueConstraint("chore_id", "member_id", "date", name="uq_chore_instances_cmd"),
@@ -196,6 +206,8 @@ class MemberStats(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utcnow, onupdate=utcnow
     )
+    # Tenant scope (step 8). See `Member.household_id`.
+    household_id: Mapped[str | None] = mapped_column(String(36))
 
     __table_args__ = (
         CheckConstraint("points_total >= 0", name="ck_member_stats_total_nonneg"),
@@ -214,6 +226,8 @@ class ActivityLog(Base):
     actor: Mapped[str] = mapped_column(String(128), nullable=False)
     action: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    # Tenant scope (step 8). See `Member.household_id`.
+    household_id: Mapped[str | None] = mapped_column(String(36))
 
 
 class AppConfig(Base):
@@ -234,6 +248,9 @@ class AppConfig(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utcnow, onupdate=utcnow
     )
+    # Tenant scope (step 8). See `Member.household_id`. Each household has
+    # its own jwt_secret / parent_pin_hash / etc. once multi-tenant lands.
+    household_id: Mapped[str | None] = mapped_column(String(36))
 
 
 __all__ = [
