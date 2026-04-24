@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 import pytest
-
 from family_chores_db.models import (
     Chore,
     ChoreInstance,
@@ -13,6 +12,7 @@ from family_chores_db.models import (
     Member,
     RecurrenceType,
 )
+
 from family_chores_addon.ha.reconcile import reconcile_once
 from tests._ha_fakes import FakeHAClient
 

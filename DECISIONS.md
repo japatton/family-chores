@@ -721,6 +721,25 @@ No direct conflicts found. Specifically:
   - **Workspace test suite total: 28 frontend** (26 addon + 2 web). Python tests unchanged at 333.
   - **TODO_POST_REFACTOR additions:** none.
 
+- **Step 12 — 2026-04-23, commit `d9a61f8`.** CI restructured into a parallel matrix and the long-deferred Docker fixup landed.
+  - **Dockerfile rewritten for repo-root build context.** Frontend stage uses pnpm (`corepack` + `pnpm@9.15.0`) with `--filter family-chores-frontend --frozen-lockfile` against the workspace lockfile — drops step 7's `--ignore-workspace --no-frozen-lockfile` workaround; fully reproducible. Python stage installs the four workspace packages **in dependency order** (`core → db → api → addon`) via plain `pip install /local/path` — pip treats local paths as wheels-for-resolution and finds each `family-chores-*` dep already-installed when resolving the next package. No uv in the runtime image (keeps it lean), no PyPI hit for workspace deps. Step-6's broken state ("`pip install /app` can't find family-chores-core on PyPI") is fixed.
+  - **Root `.dockerignore` added** covering `.git`, `.venv`, `__pycache__`, `node_modules` (any depth), built SPA dirs, tests, and docs. Keeps the repo-root build context lean.
+  - **Local `docker build` not verified** — Docker isn't installed on this dev machine. The new `integration-addon` CI job is the validation point; if the Dockerfile is broken it'll fail there before merge.
+  - **`ci.yml` replaced with a parallel matrix:**
+    - `python` matrix over [core, db, api, addon, saas] — pytest per package.
+    - `python-arch` runs the workspace-root architecture tests (dep-arrows + packages-clean).
+    - `python-lint` runs `ruff check` workspace-wide + `mypy --strict` on the addon.
+    - `frontend` matrix over [addon-frontend, web, lovelace-card] — conditional lint/typecheck/test/build per package + artefact upload.
+    - `build-addon-image` — amd64 Buildx + GHA cache, image tarball uploaded.
+    - `integration-addon` (NEW) — `docker load` + container boot, polls `/api/health` for up to 30 s, then asserts `/api/info` reports `ha_connected=false`. No Supervisor stub needed: addon's `make_client_from_env` returns None without `SUPERVISOR_TOKEN` and the lifespan installs `NoOpBridge` cleanly.
+  - **`release.yml` updated** to repo-root context + pnpm install for the Lovelace card. Multi-arch QEMU+Buildx unchanged.
+  - **`scripts/lint.sh` rewritten** for the monorepo (uv per-package + pnpm for frontends). Clear "uv not found" / "pnpm not found" errors instead of the old hand-rolled .venv check.
+  - **PEP 561 `py.typed` markers added** to `packages/{core,db,api}/src/family_chores_*/`. Addon's `mypy --strict` was bombing on every line that subclassed `BridgeProtocol` or used the `@app.get` decorator from a workspace import (mypy treated cross-package imports as `Any`). The marker tells mypy "this package ships type info" and the spurious errors disappear. `package-data` globs updated so `py.typed` ships with the wheel.
+  - **`packages/api/tests/test_fake_auth_strategy.py` added** — `pytest` exits 5 ("no tests collected") on an empty directory, which trips `set -e` in `scripts/lint.sh`. Two small async tests cover the fixture's `identify` + `require_parent` paths via the `fake_auth_strategy` conftest fixture.
+  - **Auto-fixed 13 ruff `I001` import-order findings** that the pre-step-12 lint script never ran across the moved locations. All in addon test/source files left over from steps 4–9's import sweeps.
+  - **Test count: 336** (= 333 from step 11 + 3 new: 2 in `test_fake_auth_strategy.py` + 1 net-new arch-test case from the new `py.typed` files). Backend baseline (218) preserved. Frontend 28 untouched. `scripts/lint.sh` exits 0 end-to-end.
+  - **TODO_POST_REFACTOR additions:** none. The "addon image needs an `image:` field in `config.yaml` so HA Supervisor pulls from GHCR instead of building locally" topic is mentioned in the Dockerfile header but not added to the post-refactor list — it's a deployment-config decision the owner makes once the GHCR namespace is settled.
+
 ### Stop-line
 
 Plan is drafted. **Pausing here for user review per prompt §11.** Once approved, I'll load `TodoWrite`, create one todo per step (1–13), and start with step 1 (scaffolds + workspace tooling).

@@ -25,11 +25,11 @@ from dataclasses import dataclass, field
 from datetime import date as date_type
 from datetime import timedelta
 
+from family_chores_db.models import ChoreInstance, Member
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
-from family_chores_db.models import ChoreInstance, Member
 from family_chores_addon.ha.bridge import (
     _INSTANCE_STATE_TO_TODO_STATUS,
     TODO_STATUS_NEEDS_ACTION,

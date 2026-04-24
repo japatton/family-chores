@@ -23,6 +23,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import cast
 
+from family_chores_api import WSManager
+from family_chores_api import create_app as create_api_app
+from family_chores_api.security import ensure_jwt_secret
+from family_chores_api.services.rollover_service import run_rollover
+from family_chores_core.time import local_today
+from family_chores_db.base import make_async_engine, make_session_factory
+from family_chores_db.recovery import BootstrapResult, bootstrap_db
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -34,13 +41,6 @@ from family_chores_addon.ha import HABridge, NoOpBridge, make_client_from_env
 from family_chores_addon.ha.client import HAClient, HAClientError
 from family_chores_addon.ha.reconcile import reconcile_once
 from family_chores_addon.scheduler import make_scheduler
-from family_chores_api import WSManager
-from family_chores_api import create_app as create_api_app
-from family_chores_api.security import ensure_jwt_secret
-from family_chores_api.services.rollover_service import run_rollover
-from family_chores_core.time import local_today
-from family_chores_db.base import make_async_engine, make_session_factory
-from family_chores_db.recovery import BootstrapResult, bootstrap_db
 
 log = logging.getLogger(__name__)
 

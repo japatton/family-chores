@@ -10,19 +10,10 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 import pytest
-
 from family_chores_api.errors import (
     InvalidStateError,
     NotFoundError,
     UndoWindowExpiredError,
-)
-from family_chores_core.time import utcnow
-from family_chores_db.models import (
-    Chore,
-    ChoreInstance,
-    InstanceState,
-    Member,
-    RecurrenceType,
 )
 from family_chores_api.services.instance_actions import (
     UNDO_WINDOW_SECONDS,
@@ -32,6 +23,14 @@ from family_chores_api.services.instance_actions import (
     reject_instance,
     skip_instance,
     undo_complete,
+)
+from family_chores_core.time import utcnow
+from family_chores_db.models import (
+    Chore,
+    ChoreInstance,
+    InstanceState,
+    Member,
+    RecurrenceType,
 )
 
 

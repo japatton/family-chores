@@ -22,11 +22,10 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import jwt
-from fastapi import Request
-
 from family_chores_api.deps.auth import Identity, ParentIdentity
 from family_chores_api.errors import AuthRequiredError
 from family_chores_api.security import decode_parent_token, extract_bearer
+from fastapi import Request
 
 
 class IngressAuthStrategy:

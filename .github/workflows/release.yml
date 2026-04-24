@@ -54,7 +54,11 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: ./family_chores
+          # Repo root context (changed in Phase 2 step 12 — DECISIONS §11).
+          # The Dockerfile copies workspace packages from packages/ and
+          # the pnpm lockfile from the workspace root, neither of which
+          # is reachable when the context is the addon directory.
+          context: .
           file: ./family_chores/Dockerfile
           platforms: ${{ matrix.platform }}
           push: true
@@ -73,16 +77,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: lovelace-card/package-lock.json
 
-      - name: Install deps
-        working-directory: lovelace-card
-        run: npm ci
+      - name: Activate pnpm
+        run: corepack enable && corepack prepare pnpm@9.15.0 --activate
+
+      - name: pnpm install (card only)
+        run: pnpm install --frozen-lockfile --filter family-chores-card
 
       - name: Build
         working-directory: lovelace-card
-        run: npm run build
+        run: pnpm run build
 
       - name: Upload artefact for release job
         uses: actions/upload-artifact@v4

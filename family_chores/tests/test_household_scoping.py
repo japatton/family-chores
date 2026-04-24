@@ -33,13 +33,13 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 
 import pytest
+from family_chores_api.deps.auth import Identity, ParentIdentity, get_auth_strategy
+from family_chores_api.errors import AuthRequiredError
 from fastapi import Request
 from fastapi.testclient import TestClient
 
 from family_chores_addon.app import create_app
 from family_chores_addon.config import Options
-from family_chores_api.deps.auth import Identity, ParentIdentity, get_auth_strategy
-from family_chores_api.errors import AuthRequiredError
 
 
 @dataclass

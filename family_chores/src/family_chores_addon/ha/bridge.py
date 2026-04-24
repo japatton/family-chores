@@ -30,10 +30,6 @@ import logging
 from datetime import date as date_type
 from typing import Any
 
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.orm import selectinload
-
 from family_chores_api.bridge import BridgeProtocol
 from family_chores_db.models import (
     Chore,
@@ -41,6 +37,10 @@ from family_chores_db.models import (
     InstanceState,
     Member,
 )
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import selectinload
+
 from family_chores_addon.ha.client import (
     HAClient,
     HAClientError,

@@ -5,10 +5,9 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 import pytest
-from sqlalchemy import select
-
-from family_chores_db.models import Chore, ChoreInstance, InstanceState, Member, RecurrenceType
 from family_chores_api.services.instance_service import generate_instances, mark_overdue
+from family_chores_db.models import Chore, ChoreInstance, InstanceState, Member, RecurrenceType
+from sqlalchemy import select
 
 
 async def _seed_member(session, slug="alice"):

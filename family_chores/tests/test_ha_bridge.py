@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
-
 from family_chores_db.models import (
     Chore,
     ChoreInstance,
@@ -14,6 +13,7 @@ from family_chores_db.models import (
     MemberStats,
     RecurrenceType,
 )
+
 from family_chores_addon.ha.bridge import (
     SENSOR_PENDING_APPROVALS,
     HABridge,

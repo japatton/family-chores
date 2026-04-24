@@ -36,5 +36,9 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+# PEP 561 marker (see packages/core/pyproject.toml).
+family_chores_api = ["py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

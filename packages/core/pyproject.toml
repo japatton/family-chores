@@ -21,5 +21,13 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+# PEP 561 marker — tells type checkers that this package ships type
+# information (it does, all source is fully annotated). Without this,
+# the addon's `mypy --strict` treats imports from here as Any and
+# bombs on every subclass / decorator that uses a name from this
+# package. Same marker added in step 12 for db + api.
+family_chores_core = ["py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
