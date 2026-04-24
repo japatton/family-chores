@@ -51,6 +51,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compute version (strip leading `v` from the git tag)
+        id: vars
+        # HA Supervisor pulls `<image>:<version>` where `<version>` is
+        # the `version:` field in config.yaml — which doesn't have a
+        # `v` prefix. The git tag does (e.g. `v0.2.0`). Without
+        # stripping, Supervisor would 404 looking for `:0.2.0` while
+        # the image was pushed as `:v0.2.0`.
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -63,7 +72,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_BASE }}-${{ matrix.arch }}:${{ github.ref_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_BASE }}-${{ matrix.arch }}:${{ steps.vars.outputs.version }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_BASE }}-${{ matrix.arch }}:latest
           build-args: |
             BUILD_FROM=${{ matrix.base }}

@@ -1,11 +1,19 @@
 name: Family Chores
-version: "0.1.0"
+version: "0.2.0"
 slug: family_chores
 description: Family chore tracking and rewards, with HA entity bridging.
 arch:
   - amd64
   - aarch64
   - armv7
+# HA Supervisor pulls this image from GHCR instead of building locally
+# from the addon directory. Required since Phase 2 (DECISIONS §11): the
+# Dockerfile copies workspace packages from the repo root (packages/{core,
+# db,api}, pnpm-lock.yaml at root), but Supervisor invokes `docker build`
+# with the addon's directory as the build context — no way for the local
+# build to reach the parent dir. The release.yml workflow builds with
+# repo-root context and pushes images here; Supervisor pulls them.
+image: ghcr.io/japatton/family-chores-{arch}
 init: false
 startup: application
 boot: auto

@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] — 2026-04-23
 
 ### Changed
 
@@ -15,13 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `family_chores/src/family_chores_addon/` composition root for the HA
   add-on itself. **No user-facing changes** — every UI behaviour, every
   HA event, every entity name is identical to the previous release.
-  The normal HA Supervisor update flow should work for existing
-  installs: just click Update on the add-on. **If the update fails with
-  a build error**, uninstall and reinstall the add-on as a fallback —
-  your data at `/data/family_chores.db` is preserved across reinstall
-  because the add-on **slug remains `family_chores`**, which is what HA
-  Supervisor keys persistence on. See `DECISIONS.md` §11 for the full
-  refactor sequence.
+- **HA Supervisor now pulls the add-on image from GHCR** instead of
+  building locally. Required by the new monorepo layout: the Dockerfile
+  references workspace packages above the addon directory, which
+  Supervisor's local build (which uses the addon dir as Docker context)
+  can't reach. The pre-built multi-arch images are pushed to
+  `ghcr.io/japatton/family-chores-{arch}` by the release workflow. The
+  normal HA Supervisor update flow now downloads + extracts the image
+  in seconds (no compilation). Your data at `/data/family_chores.db`
+  is preserved because the add-on **slug remains `family_chores`**.
+  See `DECISIONS.md` §11 for the full refactor sequence.
 
 ### Added
 
