@@ -1,35 +1,14 @@
-# Family Chores — Home Assistant Add-on
+# Family Chores
 
-Family chore tracking and rewards for Home Assistant. Runs as a single
-Supervisor-managed add-on with a web UI served through HA Ingress, plus an
-optional Lovelace card for dashboard widgets.
+[![CI](https://github.com/japatton/family-chores/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/japatton/family-chores/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/japatton/family-chores?color=blue)](https://github.com/japatton/family-chores/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-> **Status:** under active construction. See [`DECISIONS.md`](DECISIONS.md) for
-> the current architecture and [`CHANGELOG.md`](CHANGELOG.md) for milestone
-> progress.
+Family chore tracking and rewards, self-hosted inside [Home Assistant](https://www.home-assistant.io/). Runs as a Supervisor-managed add-on with an Ingress-served web UI tuned for a wall-mounted tablet, and publishes chore state as regular HA entities so you can automate against it or display it on any dashboard. An optional Lovelace card ships separately for dashboard widgets.
 
 ## Why
 
-Chore apps that live outside HA force families to juggle another service,
-another login, and another set of notifications. This add-on keeps everything
-inside HA's trust boundary and publishes chore state as regular entities so you
-can automate ("if Alice's streak breaks, blink the hall light"), display on any
-dashboard, or expose through Voice.
-
-## How it works at a glance
-
-- **SQLite** inside the add-on is the source of truth for members, chores,
-  and completions.
-- The add-on **mirrors** per-member points, streaks, and chore items into HA
-  entities (`sensor.family_chores_*`, `todo.family_chores_*`) via the
-  Supervisor-proxied REST API. This is a one-way write; we never read state
-  from HA to make decisions.
-- The Ingress UI is a React SPA tuned for a **wall-mounted 10" tablet**:
-  large tap targets, per-member color themes, confetti on completion.
-- A lightweight **Lovelace card** ships separately for users who want a
-  chore widget on a main dashboard; it reads the mirrored entities only.
-
-See [`DECISIONS.md`](DECISIONS.md) §2 for the full data-flow diagram.
+Chore apps that live outside HA force families to juggle another service, another login, and another set of notifications. This add-on keeps everything inside HA's trust boundary and publishes chore state as regular entities so you can automate ("if Alice's streak breaks, blink the hall light"), display on any dashboard, or hook into Voice.
 
 ## Screenshots
 
@@ -107,59 +86,59 @@ member tiles stacking vertically below ~640px. Typography uses
 </tr>
 </table>
 
+## Features
+
+- **Unlimited family members** — each with avatar, colour theme, and an "always approved" vs. "requires parent approval" mode.
+- **Seven recurrence rules** — daily, weekdays, weekends, specific days of the week, every N days (with anchor), monthly-on-date, one-off. DST-safe.
+- **Points + streaks + weekly totals**, with HA events fired on completion, approval, and streak milestones so you can wire automations (blink a light, play a Sonos cue, TTS, etc.).
+- **Kid-friendly tablet UI** — one-tap completion, 72px minimum tap targets, 4-second undo toast, confetti + chime on completion, per-member colour themes.
+- **Parent mode behind a PIN** — approvals queue, chore catalogue, member management, activity log, manual point adjustments.
+- **HA entity mirror** — `sensor.family_chores_<member>_{points,streak,today_progress}`, a global `sensor.family_chores_pending_approvals`, and optional per-member Local To-do sync.
+- **Lovelace card** (optional) — a single-file (~26 KB) Lit component that reads the mirrored entities and shows per-member progress on any HA dashboard.
+
+See the [add-on documentation](family_chores/DOCS.md) for the full entity catalogue, event schema, and configuration options.
+
 ## Install
 
-See [`INSTALL.md`](INSTALL.md) for step-by-step instructions (custom repository
-or local add-ons folder).
+- **Home Assistant users** — see [`INSTALL.md`](INSTALL.md) for step-by-step instructions (custom add-on repository or local `addons/` folder).
+- **Lovelace card** — see [`lovelace-card/README.md`](lovelace-card/README.md).
+
+## How it fits together
+
+- **SQLite inside the add-on** is the source of truth for members, chores, and completions.
+- The add-on **mirrors** state into HA entities via the Supervisor-proxied REST API — one-way write, never reads state back for decisions.
+- The **Ingress-served React SPA** is the primary interface, designed for a wall-mounted tablet.
+- The separate **Lovelace card** is a read-only dashboard widget; it subscribes to the mirrored entities.
+
+For the monorepo layout, the dependency direction between shared `packages/` and deployment-target `apps/*`, and the authentication strategy split, see [`docs/architecture.md`](docs/architecture.md).
 
 ## Threat model
 
-Please read this before opening your HA to family or guests:
+Please read this before opening your Home Assistant instance to family or guests:
 
-- The add-on runs **inside HA's trust boundary**. Anyone who can reach HA can
-  reach this add-on. Use HA's own authentication as your real access control.
-- The **parent PIN is a soft lock**, not a security boundary. It exists to
-  stop a curious kid from hitting "delete member" from the tablet. Do not
-  treat it as protection against a motivated attacker.
-- Uploads are re-encoded through Pillow to strip metadata and enforce size
-  limits.
+- The add-on runs **inside HA's trust boundary**. Anyone who can reach HA can reach this add-on. Use HA's own authentication as your real access control.
+- The **parent PIN is a soft lock**, not a security boundary. It exists to stop a curious kid from hitting "delete member" from the tablet. Do not treat it as protection against a motivated attacker.
+- Uploads are re-encoded through Pillow to strip metadata and enforce size limits.
 - Logs never contain PIN hashes, JWTs, or the Supervisor token.
 
-## Features (v1)
+For private vulnerability reports, see [`SECURITY.md`](SECURITY.md).
 
-- Unlimited family members, each with avatar, color, and display mode.
-- Seven recurrence rules (daily, weekdays, weekends, specific days, every N
-  days, monthly-on-date, once).
-- Points + streaks + weekly totals, with HA events fired on completion,
-  approval, and streak milestones.
-- Optional parent approval flow per member.
-- Kid-friendly tablet UI with one-tap completion, 4-second undo, confetti.
-- Parent admin view behind a PIN.
+## Documentation map
 
-## Roadmap / out of scope for v1
+- [`INSTALL.md`](INSTALL.md) — installation (custom repository or local folder), configuration, HA To-do setup, uninstalling.
+- [`family_chores/DOCS.md`](family_chores/DOCS.md) — add-on store documentation: entities, events, troubleshooting, Lovelace card integration.
+- [`family_chores/CHANGELOG.md`](family_chores/CHANGELOG.md) — per-release notes.
+- [`lovelace-card/README.md`](lovelace-card/README.md) — Lovelace card install and configuration.
+- [`docs/architecture.md`](docs/architecture.md) — monorepo layout, dependency direction, authentication strategies.
+- [`docs/roadmap.md`](docs/roadmap.md) — what's planned, what's on the radar, what's explicitly out of scope.
+- [`DECISIONS.md`](DECISIONS.md) — running design journal. The "why" behind every non-obvious choice.
 
-- Redeemable reward catalog (points → real rewards).
-- Per-kid PIN / profile lock.
-- Voice / TTS announcements (you can wire these via automations today — the
-  events are fired).
-- Photo-proof of completion.
-- Multi-household sync.
+## Contributing
 
-See [`DECISIONS.md`](DECISIONS.md) §7 for architectural hook points for each.
+Pull requests welcome — start with [`CONTRIBUTING.md`](CONTRIBUTING.md), which covers dev setup, per-package test commands, and PR expectations. For architectural changes read [`DECISIONS.md`](DECISIONS.md) and [`docs/architecture.md`](docs/architecture.md) first — the `packages/` → `apps/*` dependency direction is enforced in CI and won't bend.
 
-## Assets to replace before release
-
-- [ ] `icon.png` — solid-color placeholder
-- [ ] `logo.png` — solid-color placeholder
-
-The completion chime is synthesised via Web Audio (two-note bell, A5 →
-C#6), so no audio binary ships with the add-on.
-
-## Development
-
-See [`INSTALL.md`](INSTALL.md) "Local development" for running the backend
-and frontend outside of HA.
+By participating in this project you agree to abide by the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
-MIT.
+[MIT](LICENSE) © 2026 Jason Patton
