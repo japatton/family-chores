@@ -1,4 +1,4 @@
-"""Uvicorn entrypoint — invoked as `python -m family_chores`."""
+"""Uvicorn entrypoint — invoked as `python -m family_chores_addon`."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from family_chores_addon.config import load_options
 def main() -> None:
     options = load_options()
     uvicorn.run(
-        "family_chores.app:create_app",
+        "family_chores_addon.app:create_app",
         host="0.0.0.0",
         port=8099,
         factory=True,
