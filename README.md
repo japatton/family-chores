@@ -31,6 +31,82 @@ dashboard, or expose through Voice.
 
 See [`DECISIONS.md`](DECISIONS.md) §2 for the full data-flow diagram.
 
+## Screenshots
+
+> Captured from a synthetic dev install (no real family data). The
+> Home-Assistant-disconnected banner that normally sits at the top in
+> dev mode is hidden here for clarity.
+
+<p align="center">
+  <img src="docs/screenshots/today-desktop.png" alt="Today view — three member tiles (Alice 100%, Bob 33%, Carol 50%) with progress rings, weekly point totals, and current streaks" width="100%">
+</p>
+
+The **Today view** is the landing page on the wall-mounted tablet: one
+tile per family member, a fluid-typography progress ring, and the
+weekly + lifetime point totals. The greeting up top is contextual
+("Good morning" / "Up late?"). Tap a tile to drop into that kid's
+chore list.
+
+<table>
+<tr>
+<td width="50%">
+<img src="docs/screenshots/member-carol.png" alt="Carol's chore list — three big chore cards (brush teeth ✓ done, make bed pending, practice piano pending) with member-color theming">
+<br>
+<sub><b>Member view (kid)</b> — one-tap completion, 72px minimum tap
+targets, faded-green cards for already-done chores. Each member's
+screen is themed with their personal accent colour (Carol = green
+fairy ✨). Slow background shift reduces image-retention on the
+wall-mounted tablet.</sub>
+</td>
+<td width="50%">
+<img src="docs/screenshots/member-alice-all-done.png" alt="Alice's celebration screen after finishing every chore for the day — confetti particles scattered around a 'You did it!' panel showing 20 points earned and current streak">
+<br>
+<sub><b>All-done celebration</b> — fires a fresh confetti burst when
+the last chore of the day flips to done. Web Audio chime (A5 → C#6
+two-note bell, no binary asset) plays alongside if the sound toggle is
+on.</sub>
+</td>
+</tr>
+<tr>
+<td width="50%">
+<img src="docs/screenshots/parent-approvals.png" alt="Parent mode → Approvals tab showing Bob's pending 'Make your bed' chore with Approve and Reject buttons">
+<br>
+<sub><b>Parent — approval queue</b> — members with
+<code>requires_approval: true</code> mark chores as
+<code>done_unapproved</code> on completion; points aren't awarded
+until a parent approves. Reject sends it back to pending with an
+optional reason recorded in the activity log.</sub>
+</td>
+<td width="50%">
+<img src="docs/screenshots/parent-members.png" alt="Parent mode → Members tab listing Alice, Bob, Carol with avatars, points totals, streak counts, and per-row Approval / Adjust points / Delete actions">
+<br>
+<sub><b>Parent — manage family</b> — add/edit/remove members, toggle
+the per-member approval flag, manually adjust points (with audit-log
+trail), and link each member to a Local-Todo entity in HA for
+two-way sync.</sub>
+</td>
+</tr>
+<tr>
+<td width="50%">
+<img src="docs/screenshots/parent-chores.png" alt="Parent mode → Chores tab listing six chores (brush teeth, make bed, practice piano, take out trash, tidy your room, walk the dog) with their recurrence rules and assigned members">
+<br>
+<sub><b>Parent — chore catalog</b> — seven recurrence rules supported
+(daily, weekdays, weekends, specific weekdays, every-N-days,
+monthly-on-date, once). Creating or editing a chore regenerates
+today's instances inline so a newly-added chore shows up
+immediately — no waiting for the midnight rollover.</sub>
+</td>
+<td width="50%">
+<img src="docs/screenshots/today-portrait.png" alt="The same Today view rendered at a phone-width viewport with member tiles stacked vertically" width="60%">
+<br>
+<sub><b>Phone / portrait viewport</b> — the same Today view scales
+fluidly from a 32" wall-mounted portrait panel down to a phone, with
+member tiles stacking vertically below ~640px. Typography uses
+<code>clamp()</code>-based tokens; no discrete breakpoints.</sub>
+</td>
+</tr>
+</table>
+
 ## Install
 
 See [`INSTALL.md`](INSTALL.md) for step-by-step instructions (custom repository
