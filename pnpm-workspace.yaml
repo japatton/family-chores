@@ -1,0 +1,17 @@
+# Family Chores — pnpm workspace root.
+#
+# Three frontends, one shared lockfile:
+#   - apps/web                 — Phase 3 placeholder (added in step 1).
+#   - family_chores/frontend   — Ingress SPA (React + Vite + TS); migrated
+#                                 from npm in step 7.
+#   - lovelace-card            — separate Lit + Rollup card artefact;
+#                                 migrated from npm in step 7.
+#
+# pnpm hoisting policy is **strict by default** — every package must
+# declare every dep it actually uses. No `shamefully-hoist=true`, no
+# `public-hoist-pattern=*` escape hatches (DECISIONS §11 Q6).
+
+packages:
+  - "apps/web"
+  - "family_chores/frontend"
+  - "lovelace-card"

@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "family-chores-core"
+version = "0.1.0"
+description = "Pure domain logic for Family Chores — shared across deployment targets (see DECISIONS §11)."
+requires-python = ">=3.12"
+authors = [{ name = "Jason Patton" }]
+license = { text = "MIT" }
+# Core is pure domain logic — no SQLAlchemy, no FastAPI, no HA deps.
+# Anything that needs the network or a DB belongs elsewhere.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# PEP 561 marker — tells type checkers that this package ships type
+# information (it does, all source is fully annotated). Without this,
+# the addon's `mypy --strict` treats imports from here as Any and
+# bombs on every subclass / decorator that uses a name from this
+# package. Same marker added in step 12 for db + api.
+family_chores_core = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

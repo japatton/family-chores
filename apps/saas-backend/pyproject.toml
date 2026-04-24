@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "family-chores-saas"
+version = "0.1.0"
+description = "SaaS deployment scaffold for Family Chores (Phase 3 placeholder; see DECISIONS §11)."
+requires-python = ">=3.12"
+authors = [{ name = "Jason Patton" }]
+license = { text = "MIT" }
+dependencies = [
+    # Workspace deps — same shared packages the addon depends on. Keeps
+    # the routers / services / DB layer literally identical between the
+    # two deployment targets; the SaaS only differs in lifespan wiring
+    # (PlaceholderAuthStrategy, env-sourced JWT secret in Phase 3, etc.).
+    "family-chores-core",
+    "family-chores-db",
+    "family-chores-api",
+    # Direct deps the scaffold's app_factory + smoke tests use. Not
+    # leaning on transitives because pip's resolver doesn't guarantee
+    # they stay reachable when the consuming package's pinning shifts.
+    "fastapi>=0.115,<0.116",
+    "sqlalchemy[asyncio]>=2.0.30,<2.1",
+    "aiosqlite>=0.20,<0.21",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27,<0.28",  # for fastapi.testclient
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

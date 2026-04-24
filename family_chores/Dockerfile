@@ -1,28 +1,53 @@
-# Global ARG — must precede the first FROM to be visible to every stage's
-# FROM line. Default points at the amd64 base-python image so a plain
-# `docker build .` still works; HA Supervisor overrides this per arch via
-# --build-arg from build.yaml.
+# Family Chores — multi-stage add-on image.
+#
+# **Build context: repo root** (not `family_chores/`). The addon depends on
+# the workspace packages at `packages/{core,db,api}/`, which only exist
+# above this Dockerfile in the tree. Build with:
+#
+#     docker build -f family_chores/Dockerfile -t family-chores .
+#
+# CI follows the same pattern (see `.github/workflows/ci.yml` and
+# `release.yml`). HA Supervisor builds locally use the same context too,
+# but Supervisor invokes `docker build` against the addon's directory by
+# default — so a production install relies on pulling the multi-arch
+# image we push to GHCR via `release.yml`. (Adding an `image:` field to
+# `family_chores/config.yaml` makes this explicit; deferred to a
+# deployment-config PR.)
+
 ARG BUILD_FROM="ghcr.io/home-assistant/amd64-base-python:3.12-alpine3.20"
 
 # ─── Stage 1: frontend build ──────────────────────────────────────────────
-# Compiles the React/Vite SPA into backend/src/family_chores/static/.
-# Runs on Node 22 LTS; the output is pure static HTML/JS/CSS so the final
-# image doesn't need Node at all.
+# Compiles the React/Vite SPA into family_chores/src/family_chores_addon/static/.
+# Runs on Node 22 LTS with pnpm provisioned via corepack; the output is
+# pure static HTML/JS/CSS so the final image doesn't need Node at all.
+#
+# pnpm strict-default install via the workspace root + filter ensures
+# reproducible deps from the committed pnpm-lock.yaml (Q6 contract).
 FROM node:22-alpine AS frontend-build
 
-WORKDIR /app/frontend
+WORKDIR /build
 
-# Install deps from lockfile first for cache efficiency.
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci --no-audit --no-fund
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
-# Copy the rest of the frontend source.
-COPY frontend/ ./
+# Bring just the workspace metadata in first for cache efficiency. Every
+# package.json in the workspace must be present so pnpm can resolve
+# workspace links, even with --filter narrowing the install scope.
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY family_chores/frontend/package.json ./family_chores/frontend/package.json
+COPY apps/web/package.json ./apps/web/package.json
+COPY lovelace-card/package.json ./lovelace-card/package.json
 
-# Vite's `outDir` is `../backend/src/family_chores/static` — create the
-# target path up front so the relative resolve works.
-RUN mkdir -p /app/backend/src/family_chores \
-    && npm run build
+# `--filter family-chores-frontend` only fetches deps the SPA needs;
+# `--frozen-lockfile` rejects any drift from pnpm-lock.yaml.
+RUN pnpm install --frozen-lockfile --filter family-chores-frontend
+
+# Now the rest of the SPA source.
+COPY family_chores/frontend ./family_chores/frontend
+
+# Vite's `outDir` resolves to `../src/family_chores_addon/static`
+# relative to family_chores/frontend/, i.e. /build/family_chores/src/family_chores_addon/static.
+RUN mkdir -p /build/family_chores/src/family_chores_addon/static \
+    && pnpm --filter family-chores-frontend build
 
 # ─── Stage 2: backend runtime ─────────────────────────────────────────────
 FROM ${BUILD_FROM}
@@ -47,18 +72,32 @@ RUN apk add --no-cache --virtual .build-deps \
 
 WORKDIR /app
 
-# Backend source first.
-COPY backend/pyproject.toml /app/backend/pyproject.toml
-COPY backend/src /app/backend/src
+# Workspace-package source. `pip install` against each path produces a
+# regular (non-editable) install — pip treats local paths the same as
+# wheels for resolution purposes, and installing in dependency order
+# satisfies family_chores's `family-chores-{core,db,api}` deps without
+# pip ever reaching out to PyPI. uv is workspace-aware and would do
+# this in a single command, but pip doesn't ship in the HA base image
+# any larger than necessary; sticking with the dep-ordered approach
+# keeps the runtime image lean.
+COPY packages/core /app/packages/core
+COPY packages/db /app/packages/db
+COPY packages/api /app/packages/api
+COPY family_chores/pyproject.toml /app/family_chores/pyproject.toml
+COPY family_chores/src /app/family_chores/src
 
 # Overlay the fresh SPA build on top of the (empty) static directory.
-COPY --from=frontend-build /app/backend/src/family_chores/static \
-    /app/backend/src/family_chores/static
+COPY --from=frontend-build /build/family_chores/src/family_chores_addon/static \
+    /app/family_chores/src/family_chores_addon/static
 
-RUN pip install --no-cache-dir --prefer-binary /app/backend \
+RUN pip install --no-cache-dir --prefer-binary \
+        /app/packages/core \
+        /app/packages/db \
+        /app/packages/api \
+        /app/family_chores \
     && apk del .build-deps
 
-COPY run.sh /run.sh
+COPY family_chores/run.sh /run.sh
 RUN chmod +x /run.sh
 
 EXPOSE 8099

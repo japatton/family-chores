@@ -1,0 +1,54 @@
+# Repo-root .dockerignore for `docker build -f family_chores/Dockerfile .`
+# (introduced in Phase 2 step 12 — DECISIONS §11).
+#
+# The Dockerfile copies workspace packages from `packages/` and the
+# pnpm-lock.yaml from the root, so we can't fall back to the addon's
+# narrower `family_chores/.dockerignore` alone. This list keeps the
+# build context small (a few MB instead of hundreds) without losing
+# anything the build actually needs.
+
+# ─── Version control + CI ─────────────────────────────────────────────────
+.git
+.github
+
+# ─── Python ───────────────────────────────────────────────────────────────
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# ─── Node / pnpm ──────────────────────────────────────────────────────────
+node_modules
+**/node_modules
+
+# Built SPA output — the Dockerfile re-runs Vite from source.
+family_chores/src/family_chores_addon/static
+family_chores/frontend/dist
+lovelace-card/dist
+apps/web/dist
+
+# ─── Tests + dev artefacts ────────────────────────────────────────────────
+**/tests
+tests
+local-data
+/data
+/tmp
+
+# ─── Editor + OS noise ────────────────────────────────────────────────────
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+
+# ─── Docs that don't ship in the image ────────────────────────────────────
+*.md
+!README.md
+PROMPT.md
+PROMPT_PHASE2.md
+DECISIONS.md
+TODO_POST_REFACTOR.md
