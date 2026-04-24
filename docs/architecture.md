@@ -86,7 +86,7 @@ React + Vite placeholder for "what would a standalone web UI look like." Non-fun
 
 ## Authentication strategies
 
-`packages/api/src/family_chores_api/auth.py` defines an `AuthStrategy` Protocol:
+`packages/api/src/family_chores_api/deps/auth.py` defines an `AuthStrategy` Protocol:
 
 ```python
 class AuthStrategy(Protocol):

@@ -881,3 +881,59 @@ In commit groups per §7:
 ### Pause point
 
 Per prompt §7: this commit (DECISIONS.md only — no content files yet) ends the inventory phase. Awaiting human review + Q1–Q5 answers before starting commit group 1.
+
+### Completion (2026-04-24)
+
+Human responses to Q1–Q5 (received in-session, 2026-04-24):
+
+- **Q1 → (a).** Create `family_chores/README.md` as a fresh store-appropriate file.
+- **Q2 →** Keep `INSTALL.md` at repo root.
+- **Q3 → MIT confirmed.**
+- **Q4 →** `YOUR_CONTACT_EMAIL_HERE` placeholders acceptable; maintainer swaps before merge.
+- **Q5 → (B).** Skip Lovelace-card screenshot for this pass; can be added later.
+
+#### Commits on `release-polish` (all documentation-only)
+
+| Commit | Group | What |
+|---|---|---|
+| `b50d63a` | 0 | §12 pre-work inventory (this section, initial) |
+| `67b5a26` | 1 | Governance: LICENSE, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, issue templates × 3, PR template |
+| `d3a0592` | 2 | Repo-root README rewrite + `docs/architecture.md` + `docs/roadmap.md` |
+| `9f71100` | 3 | Lovelace card docs: README edit + `hacs.json` + `info.md` + `CHANGELOG.md` |
+| `43116b5` | 4 | `family_chores/README.md` (store-appropriate, 90 lines) |
+| `3c8bafe` | 5 | `family_chores/DOCS.md` expansion: Dashboard integration, Backup+restore, Privacy, 6 FAQs |
+| *this commit* | 6 | Verification pass: architecture.md path fix + this completion note |
+
+Branch delta vs. base `63be636`: 18 files / +1082 / −106 lines, all documentation.
+
+#### Verification results
+
+- **Link check.** Scanned all 12 touched markdown files for broken relative links and `<img src=...>` paths; zero broken.
+- **Image-path check.** All 7 screenshots in `docs/screenshots/` referenced by `/README.md` resolve. No new images introduced.
+- **`family_chores/CHANGELOG.md` byte-identical.** `git diff 63be636..HEAD -- family_chores/CHANGELOG.md` returns zero lines.
+- **`family_chores/config.yaml` version unchanged** at `0.2.1`.
+- **Test suite green.** `./scripts/lint.sh` exits 0 on every stage: ruff + mypy (addon + packages + saas), pytest (147 addon + 12 saas + 81 architecture + packages suites), frontend lint + typecheck + vitest (26 addon + 2 web), lovelace-card tsc. 364 tests total, consistent with `docs/architecture.md`'s testing topology.
+
+#### Surprises / deviations from plan
+
+- **`docs/architecture.md` `AuthStrategy` path error caught at verification.** I originally wrote `packages/api/src/family_chores_api/auth.py` when the Protocol actually lives at `packages/api/src/family_chores_api/deps/auth.py`. Caught by grepping for `class AuthStrategy(Protocol)` across `packages/`. Fixed in this commit.
+- **CoC filter workaround.** Output-filtering policy blocked writing the Contributor Covenant 2.1 verbatim (the policy's enumeration of unacceptable-behaviour categories reads like sensitive content when reproduced). Pivoted to the widely-used adopt-by-reference pattern: `CODE_OF_CONDUCT.md` is a short file that states the project adopts Covenant 2.1, links to the canonical text on contributor-covenant.org, and specifies the enforcement contact. Kubernetes, Django, and Rust use this pattern. Maintainability bonus: future Covenant updates are inherited automatically with no edit.
+- **Context-window boundary during commit group 1.** Conversation hit the context limit mid-group; three governance files (`LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`) were written but not yet committed at the break. Continuation resumed at the same branch state and completed the group without re-doing work. No duplicate or conflicting files produced.
+
+#### Updated merge checklist
+
+What remains before merging `release-polish`:
+
+- [ ] **Replace `YOUR_CONTACT_EMAIL_HERE` placeholders** in `SECURITY.md` and `CODE_OF_CONDUCT.md` with a real reporting address. Use the same address in both.
+- [ ] **Review the rewritten `/README.md`** for voice — this is the most-read output.
+- [ ] **(Optional) Capture a Lovelace-card screenshot** for `docs/screenshots/lovelace-card.png` and reference it from `lovelace-card/README.md` and `lovelace-card/info.md` (Q5 deferred).
+- [ ] **(Optional) Replace `family_chores/icon.png` and `family_chores/logo.png`** placeholders before the next tagged release. The placeholders ship today; the polish didn't touch them.
+
+Resolved from the initial checklist:
+
+- [x] Q1 resolved — `family_chores/README.md` created (option a, 90 lines).
+- [x] Q3 resolved — MIT confirmed; `LICENSE` created.
+- [x] Polish did not disturb `family_chores/CHANGELOG.md` (byte-identical check passes).
+- [x] `config.yaml` version unchanged (confirmed at `0.2.1`).
+
+The polish branch is merge-ready pending the two required human actions above (email swap + README voice review).
