@@ -12,13 +12,25 @@ ARG BUILD_FROM="ghcr.io/home-assistant/amd64-base-python:3.12-alpine3.20"
 # Layout note: the addon flattened in Phase 2 step 6 (DECISIONS §11) —
 # the previous `backend/` wrapper was removed so the Python source now
 # sits at `src/family_chores_addon/` rather than `backend/src/family_chores/`.
+#
+# Tooling note (step 7): the frontend now lives in a pnpm workspace at
+# the repo root, but HA Supervisor builds the addon with `family_chores/`
+# as the Docker build context — so the workspace lockfile at
+# `/Users/.../pnpm-lock.yaml` is not reachable from inside the build.
+# Step 12 will revisit the addon image to make the Docker build fully
+# reproducible across the workspace; for now we use
+# `--ignore-workspace --no-frozen-lockfile` so the stage parses and
+# (locally) builds, even though resolution isn't pinned.
 FROM node:22-alpine AS frontend-build
 
 WORKDIR /app/frontend
 
-# Install deps from lockfile first for cache efficiency.
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci --no-audit --no-fund
+# Activate pnpm via corepack — Node 22 ships it bundled, no extra image.
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+
+# Install deps. See "Tooling note" above for the workspace caveats.
+COPY frontend/package.json ./
+RUN pnpm install --ignore-workspace --no-frozen-lockfile
 
 # Copy the rest of the frontend source.
 COPY frontend/ ./
@@ -26,7 +38,7 @@ COPY frontend/ ./
 # Vite's `outDir` is `../src/family_chores_addon/static` — create the
 # target path up front so the relative resolve works.
 RUN mkdir -p /app/src/family_chores_addon \
-    && npm run build
+    && pnpm run build
 
 # ─── Stage 2: backend runtime ─────────────────────────────────────────────
 FROM ${BUILD_FROM}

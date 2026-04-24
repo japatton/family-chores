@@ -678,6 +678,14 @@ No direct conflicts found. Specifically:
   - **Test count: 295** (= 218 backend baseline + 1 saas-stub + 76 architecture-test cases). Unchanged from step 5. `family_chores/tests/` continues to host all 142 addon tests.
   - **TODO_POST_REFACTOR additions:** none.
 
+- **Step 7 — 2026-04-23, commit `5129afb`.** Frontend + Lovelace card migrated from npm to pnpm. Both `family_chores/frontend` and `lovelace-card` joined `pnpm-workspace.yaml` (now 4 workspace projects: root + apps/web + frontend + card); both `package-lock.json`s deleted; root `pnpm-lock.yaml` regenerated to cover all three frontend packages (317 packages, ~6 s install). Outcomes:
+  - **Q6 guardrail held — no `shamefully-hoist=true`.** pnpm's strict-default resolution surfaced no undeclared transitive deps that needed escape hatches; both packages already declared every actually-used dep in their `package.json` (kudos to milestone-8 hygiene).
+  - **Frontend vitest count is 26, not 25.** Confirmed: 6 files, 26 tests, 1.12 s. The "25" figure that's been carried in DECISIONS since step 1 was a stale snapshot from the milestone-8 commit; one test was added between then and now. Updating the running figure in this entry.
+  - **Lovelace-card builds clean** under `pnpm --filter family-chores-card build` (rollup produced `dist/family-chores-card.js` in 674 ms — same artefact as before).
+  - **Dockerfile frontend-build stage updated** with pnpm commands (`corepack enable && corepack prepare pnpm@9.15.0 --activate`, then `pnpm install --ignore-workspace --no-frozen-lockfile`, then `pnpm run build`). The `--ignore-workspace --no-frozen-lockfile` is a **deliberate, documented workaround**: HA Supervisor builds the addon with `family_chores/` as the Docker context, so the workspace `pnpm-lock.yaml` (sitting at the repo root) isn't reachable from inside the build. The frontend stage isn't pinned to the workspace lockfile right now; step 12 will revisit the addon image to make the Docker build fully reproducible across the workspace (and also fix the Python install stage, which has been broken since step 6 because `pip install /app` can't find the `family-chores-{core,db,api}` workspace deps on PyPI).
+  - **Python test suite unchanged at 295.** Frontend changes don't touch any Python code; the dep-arrow + packages-clean tests still pass on every shared-package file.
+  - **TODO_POST_REFACTOR additions:** none. The Docker-context limitation is logged in this DECISIONS entry + as a comment in the Dockerfile itself; step 12 owns the fix.
+
 ### Stop-line
 
 Plan is drafted. **Pausing here for user review per prompt §11.** Once approved, I'll load `TodoWrite`, create one todo per step (1–13), and start with step 1 (scaffolds + workspace tooling).
