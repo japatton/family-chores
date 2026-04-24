@@ -1,0 +1,67 @@
+name: Bug report
+description: Something in the add-on isn't working as intended.
+title: "[bug] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a report. The more specific the reproduction, the faster the fix.
+
+        Before filing: are you on the [latest release](https://github.com/japatton/family-chores/releases)? Many reports against older versions are already resolved on `main`.
+
+  - type: input
+    id: addon-version
+    attributes:
+      label: Add-on version
+      description: The `version:` field from the add-on info page, or `family_chores/config.yaml`.
+      placeholder: "0.2.1"
+    validations:
+      required: true
+
+  - type: input
+    id: ha-version
+    attributes:
+      label: Home Assistant version
+      description: Settings → About, or the value of `HA_VERSION` in your install.
+      placeholder: "2026.4.2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Install method
+      options:
+        - Custom add-on repository (HA Supervisor pulls from GHCR)
+        - Local `addons/` folder (development install)
+        - Other (describe in Additional context)
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Exact steps — what you clicked, what you expected, what happened. Include sample data if behaviour depends on it.
+      placeholder: |
+        1. Create a chore with recurrence type `every_n_days`, n=3, anchor=Monday
+        2. Complete it on the anchor day
+        3. Open Parent → Activity
+        4. Expected: one completion entry
+        5. Actual: two entries, one minute apart
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log excerpt
+      description: Add-on logs from Supervisor → Family Chores → Logs. Strip personal data before pasting. If there's a stack trace, include all of it.
+      render: shell
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Screenshots, workarounds you've tried, related issues, anything else that might help triage.

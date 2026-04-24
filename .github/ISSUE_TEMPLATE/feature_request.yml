@@ -1,0 +1,41 @@
+name: Feature request
+description: Suggest a new capability or a change to existing behaviour.
+title: "[feature] "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Features get triaged against the [roadmap](../../docs/roadmap.md) and against the implicit scope of the project (household chore board for a wall-mounted tablet, self-hosted via Home Assistant). Requests that broaden scope — multi-household, mobile apps, web SaaS — are unlikely to land; see the roadmap for what is and isn't on the table.
+
+        Lead with the parenting or household workflow that's broken or missing. The implementation can be discussed after we agree the problem is real.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's the problem?
+      description: The real-world situation this would improve. Avoid jumping to a solution.
+      placeholder: |
+        My kids sometimes forget to mark a chore done even after they've done it. When I check at bedtime, I can't tell whether they forgot to do it or forgot to mark it done, so I either over-credit or under-credit.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution (optional)
+      description: If you have a specific idea in mind, describe it. A clearly stated problem is often enough.
+      placeholder: |
+        A "parent adjust" button on yesterday's chores that lets me mark something retroactively complete with a note.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered (optional)
+      description: Workarounds you've tried, other apps that solve this, or approaches you ruled out.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Screenshots, links to related discussions, anything else.

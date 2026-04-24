@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Add-on documentation
+    url: https://github.com/japatton/family-chores/blob/main/family_chores/DOCS.md
+    about: Configuration, dashboard setup, automation examples, troubleshooting FAQs. Start here for how-to questions.
+  - name: GitHub Discussions
+    url: https://github.com/japatton/family-chores/discussions
+    about: Usage questions, setup help, and parenting-workflow ideas not yet filed as feature requests.
+  - name: Security report
+    url: https://github.com/japatton/family-chores/security/advisories/new
+    about: Private vulnerability reporting. Do NOT open a public issue for a security problem — see SECURITY.md.
