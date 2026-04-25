@@ -27,6 +27,7 @@ from family_chores_api import WSManager
 from family_chores_api import create_app as create_api_app
 from family_chores_api.security import ensure_jwt_secret
 from family_chores_api.services.rollover_service import run_rollover
+from family_chores_api.services.starter_seeding import seed_starter_library
 from family_chores_core.time import local_today
 from family_chores_db.base import make_async_engine, make_session_factory
 from family_chores_db.recovery import BootstrapResult, bootstrap_db
@@ -93,6 +94,18 @@ def _build_lifespan(opts: Options):  # type: ignore[no-untyped-def]
 
         async with app.state.session_factory() as session:
             app.state.jwt_secret = await ensure_jwt_secret(session)
+
+        # Starter library seeding — idempotent. Runs every startup; only
+        # inserts entries that aren't already present and aren't in the
+        # household's suppression list. New library versions add their
+        # new entries to existing households here. See DECISIONS §13 §4.
+        # Single-tenant addon mode = household_id None.
+        try:
+            async with app.state.session_factory() as session:
+                await seed_starter_library(session, household_id=None)
+                await session.commit()
+        except Exception:
+            log.exception("starter library seed failed; continuing")
 
         # Auth strategy installs after the JWT secret is on app.state — the
         # strategy reads it lazily via this closure rather than capturing

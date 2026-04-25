@@ -12,6 +12,67 @@ Home Assistant entities you can use in automations and dashboards.
    security boundary. Use HA's own authentication for real access control.
 3. Add family members, then add chores and assign them.
 
+## Suggestions
+
+The Add Chore form ships with a **library of 46 age-appropriate chore
+suggestions** so you don't have to type out the common ones (make bed,
+brush teeth, walk the dog, take out trash, etc.). Spans 11 categories
+across ages 3 to 12+, grounded in American Academy of Pediatrics
+guidance.
+
+### Using a suggestion
+
+1. Tap **💡 Browse suggestions** at the top of the Add Chore form.
+2. Search by name, filter by age, or pick a category chip. The Source
+   filter (hidden behind "Filter by source") lets you scope to your
+   custom suggestions or the starter library only.
+3. Tap a suggestion. The form pre-fills with its name, icon, points,
+   recurrence rule, and description. Edit anything you want, assign
+   it to one or more family members, and save normally.
+
+The first time you open the Chores tab after install, a small "✨ New"
+pill draws attention to the Browse suggestions button. It disappears
+on first tap and never reappears.
+
+### Saving a chore as a suggestion
+
+The Add Chore form has a **💾 Save as a suggestion for later** checkbox
+sitting next to the Save button, **default checked**. When checked, any
+chore you save also lands in the suggestion library so the next time
+you (or your kid's other parent) need that same chore, it's one tap
+away. Uncheck the box for one-off chores you don't want to keep around.
+
+If you save a chore whose name already matches an existing
+suggestion (your own or a starter), no duplicate is created — the
+chore simply links to the existing suggestion silently.
+
+### Managing your suggestions
+
+From the Browse Suggestions panel, tap **Manage my suggestions** to
+get an editor:
+
+- **Your suggestions** — custom suggestions you've created, with Edit
+  and Delete buttons. Editing changes only the suggestion (not any
+  chore that was created from it earlier).
+- **Starter suggestions** (collapsed by default) — the bundled set,
+  with a Hide button per row. Hiding a starter removes it from the
+  library AND prevents it from being re-seeded on the next add-on
+  restart.
+- **Reset starter suggestions** (quiet link at the bottom) — restores
+  every starter suggestion you've previously hidden. Your custom
+  suggestions are untouched.
+
+Editing a chore never modifies its source suggestion. Editing a
+suggestion never modifies any chore that was previously created from
+it. Suggestions are independent blueprints, not linked records.
+
+### Library upgrades
+
+Future versions of the add-on may ship new starter suggestions. When
+they do, only the new ones get seeded into your existing library —
+your customizations to existing entries are preserved, and starters
+you've hidden stay hidden.
+
 ## Configuration
 
 | Option | Default | Description |

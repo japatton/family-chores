@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,14 +28,16 @@ from family_chores_api.events import (
 )
 from family_chores_api.schemas import (
     ChoreCreate,
+    ChoreCreateResult,
     ChoreRead,
     ChoreUpdate,
     validate_recurrence_config,
 )
 from family_chores_api.security import ParentClaim
 from family_chores_api.services.instance_service import generate_instances
+from family_chores_core.naming import normalize_chore_name
 from family_chores_core.time import local_today
-from family_chores_db.models import ActivityLog, Chore, Member
+from family_chores_db.models import ActivityLog, Chore, ChoreTemplate, Member
 from family_chores_db.scoped import scoped
 
 router = APIRouter(prefix="/api/chores", tags=["chores"])
@@ -53,6 +57,16 @@ def _to_read(chore: Chore) -> ChoreRead:
         time_window_start=chore.time_window_start,
         time_window_end=chore.time_window_end,
         assigned_member_ids=sorted(m.id for m in chore.assigned_members),
+        template_id=chore.template_id,
+    )
+
+
+def _to_create_result(chore: Chore, template_created: bool) -> ChoreCreateResult:
+    """ChoreRead-shaped result + template_created flag for POST responses."""
+    base = _to_read(chore)
+    return ChoreCreateResult(
+        **base.model_dump(),
+        template_created=template_created,
     )
 
 
@@ -118,7 +132,7 @@ async def get_chore(
     return _to_read(await _load_with_members(session, chore_id, household_id))
 
 
-@router.post("", response_model=ChoreRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ChoreCreateResult, status_code=status.HTTP_201_CREATED)
 async def create_chore(
     body: ChoreCreate,
     session: AsyncSession = Depends(get_session),
@@ -128,8 +142,25 @@ async def create_chore(
     tz: str = Depends(get_effective_timezone),
     household_id: str | None = Depends(get_current_household_id),
     _parent: ParentClaim = Depends(require_parent),
-) -> ChoreRead:
+) -> ChoreCreateResult:
     members = await _resolve_members(session, body.assigned_member_ids, household_id)
+
+    # Validate template_id (if provided) against this household's templates.
+    # Defense-in-depth — the FK constraint catches non-existent ids, but it
+    # would also pass for a real id from a different household and leak
+    # state. Per DECISIONS §13: informational only, but still household-scoped.
+    if body.template_id is not None:
+        existing_template = (
+            await session.execute(
+                select(ChoreTemplate).where(
+                    ChoreTemplate.id == body.template_id,
+                    scoped(ChoreTemplate.household_id, household_id),
+                )
+            )
+        ).scalar_one_or_none()
+        if existing_template is None:
+            raise NotFoundError(f"template id {body.template_id} not found")
+
     chore = Chore(
         name=body.name,
         icon=body.icon,
@@ -142,10 +173,56 @@ async def create_chore(
         time_window_start=body.time_window_start,
         time_window_end=body.time_window_end,
         household_id=household_id,
+        template_id=body.template_id,
+        ephemeral=not body.save_as_suggestion,
     )
     chore.assigned_members = members
     session.add(chore)
     await session.flush()
+
+    # Save-as-suggestion flow (DECISIONS §13 §1.1, §5). When the box is
+    # checked we either create a fresh template or silently link the chore
+    # to a same-named template if one already exists. Either way the chore
+    # carries a template_id afterwards (informational), and template_created
+    # tells the frontend whether to show the "saved as a suggestion" toast.
+    template_created = False
+    if body.save_as_suggestion:
+        normalized = normalize_chore_name(body.name)
+        if normalized:
+            existing_match = (
+                await session.execute(
+                    select(ChoreTemplate).where(
+                        scoped(ChoreTemplate.household_id, household_id),
+                        ChoreTemplate.name_normalized == normalized,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing_match is None:
+                new_template = ChoreTemplate(
+                    id=str(uuid.uuid4()),
+                    household_id=household_id,
+                    name=body.name,
+                    name_normalized=normalized,
+                    icon=body.icon,
+                    category=None,
+                    age_min=None,
+                    age_max=None,
+                    points_suggested=body.points,
+                    default_recurrence_type=body.recurrence_type,
+                    default_recurrence_config=body.recurrence_config,
+                    description=body.description,
+                    source="custom",
+                    starter_key=None,
+                )
+                session.add(new_template)
+                await session.flush()
+                if chore.template_id is None:
+                    chore.template_id = new_template.id
+                template_created = True
+            elif chore.template_id is None:
+                # Silent dedup: link the chore to the existing template.
+                chore.template_id = existing_match.id
+
     session.add(
         ActivityLog(
             actor=user,
@@ -162,7 +239,7 @@ async def create_chore(
         bridge.notify_member_dirty(m.id)
     await ws.broadcast({"type": EVT_CHORE_CREATED, "chore_id": chore.id})
     chore = await _load_with_members(session, chore.id, household_id)
-    return _to_read(chore)
+    return _to_create_result(chore, template_created=template_created)
 
 
 @router.patch("/{chore_id}", response_model=ChoreRead)

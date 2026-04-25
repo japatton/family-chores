@@ -143,8 +143,24 @@ class ChoreRead(BaseModel):
     time_window_start: time_type | None
     time_window_end: time_type | None
     assigned_member_ids: list[int]
+    # Chore-templates feature (DECISIONS §13). Records which template this
+    # chore was spawned from, if any. Informational only — nothing in the
+    # service layer branches on it.
+    template_id: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ChoreCreateResult(ChoreRead):
+    """ChoreRead + a one-shot signal indicating whether a brand-new
+    suggestion was created alongside this chore.
+
+    Used only as the POST /api/chores response body; PATCH and GET keep
+    returning ChoreRead. The frontend reads `template_created` to flash
+    a subtle "saved as a suggestion for next time" toast.
+    """
+
+    template_created: bool = False
 
 
 class ChoreCreate(BaseModel):
@@ -159,6 +175,12 @@ class ChoreCreate(BaseModel):
     time_window_start: time_type | None = None
     time_window_end: time_type | None = None
     assigned_member_ids: list[int] = Field(default_factory=list)
+    # Chore-templates feature (DECISIONS §13). `template_id` is the
+    # source-template hint; if set, the router validates it exists in
+    # this household and records it on the new chore. `save_as_suggestion`
+    # defaults to True per §6.1 (the dialog checkbox is pre-checked).
+    template_id: str | None = Field(None, max_length=36)
+    save_as_suggestion: bool = True
 
     @field_validator("recurrence_config")
     @classmethod
@@ -269,6 +291,91 @@ class ClearPinRequest(BaseModel):
 class TokenResponse(BaseModel):
     token: str
     expires_at: int  # unix seconds
+
+
+# ─── suggestions (chore templates) ────────────────────────────────────────
+
+
+class SuggestionRead(BaseModel):
+    """Outward shape of a chore_template row.
+
+    `name_normalized` is internal — populated by the service layer from
+    `normalize_chore_name(name)` and used for dedup. Not exposed.
+    `household_id` is also intentionally not exposed; the API is already
+    scoped to the caller's household and surfacing it would just confuse
+    the UI.
+    """
+
+    id: str
+    name: str
+    icon: str | None
+    category: str | None
+    age_min: int | None
+    age_max: int | None
+    points_suggested: int
+    default_recurrence_type: RecurrenceType
+    default_recurrence_config: dict[str, Any]
+    description: str | None
+    source: str  # 'starter' | 'custom'
+    starter_key: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SuggestionCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    icon: str | None = Field(None, max_length=64)
+    category: str | None = Field(None, max_length=32)
+    age_min: int | None = Field(None, ge=0, le=120)
+    age_max: int | None = Field(None, ge=0, le=120)
+    points_suggested: int = Field(1, ge=0)
+    default_recurrence_type: RecurrenceType
+    default_recurrence_config: dict[str, Any] = Field(default_factory=dict)
+    description: str | None = Field(None, max_length=2048)
+
+    @field_validator("default_recurrence_config")
+    @classmethod
+    def _check_cfg(
+        cls, v: dict[str, Any], info: Any
+    ) -> dict[str, Any]:
+        rt = info.data.get("default_recurrence_type")
+        if rt is None:
+            return v
+        return validate_recurrence_config(rt, v)
+
+    @field_validator("age_max")
+    @classmethod
+    def _check_ages(cls, v: int | None, info: Any) -> int | None:
+        a_min = info.data.get("age_min")
+        if v is not None and a_min is not None and v < a_min:
+            raise ValueError("age_max must be >= age_min")
+        return v
+
+
+class SuggestionUpdate(BaseModel):
+    """All fields optional. The service layer rejects edits to
+    starter-template names (starter `name` is immutable; other fields
+    are editable per DECISIONS §13 §1.2)."""
+
+    name: str | None = Field(None, min_length=1, max_length=120)
+    icon: str | None = Field(None, max_length=64)
+    category: str | None = Field(None, max_length=32)
+    age_min: int | None = Field(None, ge=0, le=120)
+    age_max: int | None = Field(None, ge=0, le=120)
+    points_suggested: int | None = Field(None, ge=0)
+    default_recurrence_type: RecurrenceType | None = None
+    default_recurrence_config: dict[str, Any] | None = None
+    description: str | None = Field(None, max_length=2048)
+
+
+class SuggestionResetResult(BaseModel):
+    """Returned from POST /api/suggestions/reset."""
+
+    suppressions_cleared: int
+    seeded: int
+    library_version: int
 
 
 # ─── activity log ─────────────────────────────────────────────────────────

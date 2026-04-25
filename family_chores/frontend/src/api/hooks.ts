@@ -8,12 +8,18 @@ import type {
   ActivityPage,
   Chore,
   ChoreCreate,
+  ChoreCreateResult,
   InfoResponse,
   Instance,
   Member,
   MemberCreate,
   MemberStats,
   MemberUpdate,
+  Suggestion,
+  SuggestionCreate,
+  SuggestionFilters,
+  SuggestionResetResult,
+  SuggestionUpdate,
   TodayView,
   TokenResponse,
   WhoAmI,
@@ -216,15 +222,109 @@ export function useCreateChore() {
   const token = useParentStore((s) => (s.isActive() ? s.token : null))
   return useMutation({
     mutationFn: (body: ChoreCreate) =>
-      apiFetch<Chore>('/chores', {
+      apiFetch<ChoreCreateResult>('/chores', {
         method: 'POST',
         parentToken: token,
         json: body,
       }),
-    onSuccess: () => {
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['chores'] })
       qc.invalidateQueries({ queryKey: ['today'] })
+      // Invalidate suggestions too — POST may have created a new one
+      // alongside the chore (template_created=true).
+      if (result.template_created) {
+        qc.invalidateQueries({ queryKey: ['suggestions'] })
+      }
     },
+  })
+}
+
+// ─── suggestions (DECISIONS §13) ──────────────────────────────────────────
+
+function buildSuggestionsQuery(filters?: SuggestionFilters): string {
+  if (!filters) return ''
+  const params = new URLSearchParams()
+  if (filters.category) params.set('category', filters.category)
+  if (filters.age !== undefined) params.set('age', String(filters.age))
+  if (filters.source && filters.source !== 'all')
+    params.set('source', filters.source)
+  if (filters.q) params.set('q', filters.q)
+  const s = params.toString()
+  return s ? `?${s}` : ''
+}
+
+export function useSuggestions(
+  filters?: SuggestionFilters,
+  opts: { enabled?: boolean } = {},
+) {
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useQuery({
+    queryKey: ['suggestions', filters ?? null],
+    queryFn: () =>
+      apiFetch<Suggestion[]>(`/suggestions${buildSuggestionsQuery(filters)}`, {
+        parentToken: token,
+      }),
+    enabled: !!token && (opts.enabled ?? true),
+    staleTime: 30_000,
+  })
+}
+
+export function useCreateSuggestion() {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: (body: SuggestionCreate) =>
+      apiFetch<Suggestion>('/suggestions', {
+        method: 'POST',
+        parentToken: token,
+        json: body,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['suggestions'] }),
+  })
+}
+
+/**
+ * Update an arbitrary suggestion. The id flows through the mutation
+ * variables (not a closure) so the same hook instance can patch any
+ * suggestion in a list — used by the Manage Suggestions view.
+ */
+export function useUpdateSuggestion() {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: SuggestionUpdate }) =>
+      apiFetch<Suggestion>(`/suggestions/${id}`, {
+        method: 'PATCH',
+        parentToken: token,
+        json: body,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['suggestions'] }),
+  })
+}
+
+export function useDeleteSuggestion() {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<void>(`/suggestions/${id}`, {
+        method: 'DELETE',
+        parentToken: token,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['suggestions'] }),
+  })
+}
+
+export function useResetSuggestions() {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<SuggestionResetResult>('/suggestions/reset', {
+        method: 'POST',
+        parentToken: token,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['suggestions'] }),
   })
 }
 

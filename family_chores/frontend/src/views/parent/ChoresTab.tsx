@@ -1,7 +1,29 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { APIError } from '../../api/client'
-import { useChores, useCreateChore, useDeleteChore, useMembers } from '../../api/hooks'
-import type { ChoreCreate, RecurrenceType } from '../../api/types'
+import {
+  useChores,
+  useCreateChore,
+  useDeleteChore,
+  useDeleteSuggestion,
+  useMembers,
+  useResetSuggestions,
+  useSuggestions,
+  useUpdateSuggestion,
+} from '../../api/hooks'
+import type {
+  ChoreCreate,
+  RecurrenceType,
+  Suggestion,
+  SuggestionUpdate,
+} from '../../api/types'
+import { BrowseSuggestionsPanel } from '../../components/BrowseSuggestionsPanel'
+import { ManageSuggestionsView } from '../../components/ManageSuggestionsView'
+import { useFirstRunBadge } from '../../hooks/useFirstRunBadge'
+
+// Per-device localStorage key for the "✨ New" badge on Browse Suggestions
+// (DECISIONS §13 §6.2). app_config-backed persistence is mentioned in the
+// spec but deferred to v2 — see `useFirstRunBadge` for the rationale.
+const SUGGESTIONS_BADGE_KEY = 'fc.suggestionsBadgeSeen'
 
 const RECURRENCE_OPTIONS: { value: RecurrenceType; label: string }[] = [
   { value: 'daily', label: 'Every day' },
@@ -40,6 +62,35 @@ export function ChoresTab() {
   )
   const [error, setError] = useState<string | null>(null)
 
+  // Suggestions panel state — three modes: closed, "browse" (default
+  // when opened), or "manage" (the secondary view reached from the
+  // "Manage my suggestions" link in the browse panel). Lazy-loaded —
+  // useSuggestions only fires when the panel is open.
+  const [panelMode, setPanelMode] = useState<'closed' | 'browse' | 'manage'>(
+    'closed',
+  )
+  const panelOpen = panelMode !== 'closed'
+  const suggestions = useSuggestions(undefined, { enabled: panelOpen })
+  const updateSuggestion = useUpdateSuggestion()
+  const deleteSuggestion = useDeleteSuggestion()
+  const resetSuggestions = useResetSuggestions()
+  const [showBadge, dismissBadge] = useFirstRunBadge(SUGGESTIONS_BADGE_KEY)
+
+  // Save-as-suggestion checkbox (DECISIONS §13 §6.1) — default checked.
+  // The flag flows through to the chore POST body; the backend silently
+  // dedups against existing same-name templates, returning
+  // template_created=true only when a brand-new one was added alongside.
+  const [saveAsSuggestion, setSaveAsSuggestion] = useState(true)
+  // One-shot confirmation surfaced when the POST flag actually produced
+  // a new suggestion. Cleared after 4 seconds so the form doesn't carry
+  // stale messaging into the next chore the parent adds.
+  const [savedMessage, setSavedMessage] = useState<string | null>(null)
+  useEffect(() => {
+    if (savedMessage === null) return
+    const t = window.setTimeout(() => setSavedMessage(null), 4000)
+    return () => window.clearTimeout(t)
+  }, [savedMessage])
+
   if (chores.isLoading || members.isLoading) {
     return <p className="text-brand-700">Loading…</p>
   }
@@ -59,6 +110,41 @@ export function ChoresTab() {
     }
   }
 
+  /**
+   * Pre-fill every form field from a suggestion. Pulls the per-recurrence-
+   * type state out of `default_recurrence_config` so the right secondary
+   * controls populate too. Closes the panel afterwards (DECISIONS §13 §6.1).
+   */
+  const applySuggestion = (s: Suggestion) => {
+    const cfg = s.default_recurrence_config as Record<string, unknown>
+    setDraft({
+      name: s.name,
+      icon: s.icon,
+      points: s.points_suggested,
+      description: s.description,
+      recurrence_type: s.default_recurrence_type,
+      recurrence_config: cfg,
+      assigned_member_ids: draft.assigned_member_ids ?? [],
+      active: true,
+      template_id: s.id,
+    })
+    if (s.default_recurrence_type === 'specific_days' && Array.isArray(cfg.days)) {
+      setSpecificDays((cfg.days as number[]).slice())
+    }
+    if (s.default_recurrence_type === 'every_n_days') {
+      if (typeof cfg.n === 'number') setEveryN(String(cfg.n))
+      if (typeof cfg.anchor === 'string') setEveryAnchor(cfg.anchor)
+    }
+    if (s.default_recurrence_type === 'monthly_on_date' && typeof cfg.day === 'number') {
+      setMonthDay(String(cfg.day))
+    }
+    if (s.default_recurrence_type === 'once' && typeof cfg.date === 'string') {
+      setOnceDate(cfg.date)
+    }
+    setPanelMode('closed')
+    setError(null)
+  }
+
   const submit = () => {
     setError(null)
     if (!draft.name.trim()) {
@@ -68,9 +154,11 @@ export function ChoresTab() {
     const body: ChoreCreate = {
       ...draft,
       recurrence_config: buildRecurrenceConfig(),
+      save_as_suggestion: saveAsSuggestion,
     }
+    const choreName = body.name
     create.mutate(body, {
-      onSuccess: () => {
+      onSuccess: (result) => {
         setDraft({
           name: '',
           points: 5,
@@ -80,6 +168,14 @@ export function ChoresTab() {
           active: true,
         })
         setSpecificDays([])
+        setSaveAsSuggestion(true)
+        if (result.template_created) {
+          setSavedMessage(
+            `Saved "${choreName}" as a suggestion for next time.`,
+          )
+        } else {
+          setSavedMessage(null)
+        }
       },
       onError: (e) => {
         if (e instanceof APIError) setError(e.detail)
@@ -129,7 +225,66 @@ export function ChoresTab() {
       </ul>
 
       <div className="rounded-xl4 bg-white p-5 shadow-card space-y-3">
-        <div className="text-fluid-base font-black text-brand-900">Add a chore</div>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="text-fluid-base font-black text-brand-900">Add a chore</div>
+          <button
+            type="button"
+            onClick={() => {
+              setPanelMode((m) => (m === 'closed' ? 'browse' : 'closed'))
+              // Discoverability badge is one-shot — dismiss as soon as
+              // the parent acknowledges the affordance, regardless of
+              // whether they kept the panel open or immediately closed
+              // it. See DECISIONS §13 §1.3.
+              if (showBadge) dismissBadge()
+            }}
+            aria-expanded={panelOpen}
+            aria-controls="browse-suggestions-region"
+            className="min-h-touch px-4 rounded-2xl font-bold text-fluid-sm bg-brand-50 text-brand-700 border border-brand-100 inline-flex items-center gap-2"
+          >
+            <span>
+              💡 {panelOpen ? 'Hide suggestions' : 'Browse suggestions'}
+            </span>
+            {showBadge && !panelOpen && (
+              <span
+                data-testid="suggestions-new-badge"
+                className="rounded-full bg-amber-200 text-amber-900 text-fluid-xs font-bold px-2 py-0.5"
+                aria-label="new feature"
+              >
+                ✨ New
+              </span>
+            )}
+          </button>
+        </div>
+        {panelOpen && (
+          <div id="browse-suggestions-region">
+            {suggestions.isLoading ? (
+              <p className="text-fluid-sm text-brand-700/70">Loading suggestions…</p>
+            ) : suggestions.isError ? (
+              <p
+                role="alert"
+                className="text-fluid-sm text-rose-600 font-semibold"
+              >
+                Couldn’t load suggestions. {(suggestions.error as Error)?.message}
+              </p>
+            ) : panelMode === 'manage' ? (
+              <ManageSuggestionsView
+                suggestions={suggestions.data ?? []}
+                onUpdate={(id, body: SuggestionUpdate) =>
+                  updateSuggestion.mutateAsync({ id, body })
+                }
+                onDelete={(s) => deleteSuggestion.mutateAsync(s.id)}
+                onReset={() => resetSuggestions.mutateAsync()}
+                onBack={() => setPanelMode('browse')}
+              />
+            ) : (
+              <BrowseSuggestionsPanel
+                suggestions={suggestions.data ?? []}
+                onSelect={applySuggestion}
+                onManage={() => setPanelMode('manage')}
+              />
+            )}
+          </div>
+        )}
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1">
             <span className="text-fluid-xs font-bold text-brand-700">Name</span>
@@ -297,14 +452,34 @@ export function ChoresTab() {
             {error}
           </div>
         )}
-        <button
-          type="button"
-          onClick={submit}
-          disabled={create.isPending}
-          className="min-h-touch px-6 rounded-2xl bg-brand-600 text-white font-black text-fluid-base disabled:opacity-50"
-        >
-          {create.isPending ? 'Saving…' : 'Add chore'}
-        </button>
+        {savedMessage && (
+          <div
+            role="status"
+            className="text-emerald-700 text-fluid-sm font-semibold"
+          >
+            {savedMessage}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between gap-3 flex-wrap pt-1 border-t border-brand-50">
+          <label className="flex items-center gap-2 text-fluid-sm text-brand-700">
+            <input
+              type="checkbox"
+              checked={saveAsSuggestion}
+              onChange={(e) => setSaveAsSuggestion(e.target.checked)}
+              className="h-5 w-5 rounded border-brand-200 accent-brand-600"
+            />
+            <span>💾 Save as a suggestion for later</span>
+          </label>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={create.isPending}
+            className="min-h-touch px-6 rounded-2xl bg-brand-600 text-white font-black text-fluid-base disabled:opacity-50"
+          >
+            {create.isPending ? 'Saving…' : 'Add chore'}
+          </button>
+        </div>
       </div>
     </div>
   )

@@ -27,7 +27,11 @@ where = ["src"]
 # the addon's `mypy --strict` treats imports from here as Any and
 # bombs on every subclass / decorator that uses a name from this
 # package. Same marker added in step 12 for db + api.
-family_chores_core = ["py.typed"]
+#
+# `data/*.json` ships the bundled starter chore library (DECISIONS §13).
+# Without this, the wheel install would skip the JSON and
+# `load_starter_library()` would fail on startup with FileNotFoundError.
+family_chores_core = ["py.typed", "data/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -937,3 +937,158 @@ Resolved from the initial checklist:
 - [x] `config.yaml` version unchanged (confirmed at `0.2.1`).
 
 The polish branch is merge-ready pending the two required human actions above (email swap + README voice review).
+
+## 13. Chore suggestions
+
+Tracking prompt: post-v0.2.4 chore-suggestions feature prompt (received 2026-04-24, after v0.2.4 was tagged and pushed). Goal: ship a bundled starter library of 46 age-appropriate chore templates plus a "Browse suggestions" affordance inside the Add Chore form, with templates living parallel to chores (editing a chore never edits its source template). Branch: `feat-chore-suggestions` off `main` at `3965ae3` (the v0.2.4 release commit).
+
+### Pre-work inventory (2026-04-24)
+
+#### Codebase divergences from the prompt's assumed shape
+
+| Prompt assumption | Actual codebase | Implication |
+|---|---|---|
+| Models split into per-table files under `packages/db/src/family_chores_db/models/` | All models live in a single `models.py` (~250 lines) | New `ChoreTemplate` + `HouseholdStarterSuppression` classes go in `models.py`, not separate files |
+| `Member` has an `age` column (referenced by §1.3 "youngest member's age" default) | No `age` column on `Member` today | §1.3's youngest-age default is **inert** unless we add the column — see Q2 |
+| Add Chore is a "dialog" (modal) | `family_chores/frontend/src/views/parent/ChoresTab.tsx` renders the Add Chore form **inline** at the top of the Chores tab — not a modal | "Browse suggestions" panel becomes another inline section above the form, not a modal-inside-modal — matches the prompt's "lean toward inline" preference |
+| Models use `server_default=...` for new columns (per the §2.1 spec snippets) | Existing `models.py` uses Python-side defaults exclusively (`default=utcnow`, `default=dict`, `default=0`) | Match house style — Python-side defaults on the ORM models. The migration uses `server_default` (correct for emitting the table-level default in CREATE TABLE / ALTER TABLE) |
+| Recurrence enum includes a "weekly" type | No `WEEKLY` member of `RecurrenceType` (engine has DAILY, WEEKDAYS, WEEKENDS, SPECIFIC_DAYS, EVERY_N_DAYS, MONTHLY_ON_DATE, ONCE) | The library's `default_recurrence: "weekly"` strings need translation — see Q1 |
+| Addon has a `services/` directory | Addon has no `services/` directory; existing `services/` lives in `packages/api/src/family_chores_api/services/` | Seeding service goes in `packages/api/services/starter_seeding.py` so SaaS reuses it; addon `app.py` calls it from lifespan |
+| Migration filename `0004_add_chore_templates` | Existing migrations are `0001_initial_schema.py`, `0002_add_member_ha_todo_entity_id.py`, `0003_add_household_id.py` — same numeric+slug convention | New migration: `0004_add_chore_templates.py`. Down-revision: `0003_add_household_id` |
+
+#### Recurrence-config shape verification (per `packages/core/src/family_chores_core/recurrence.py`)
+
+| RecurrenceType enum | Config required | Library JSON `default_recurrence` mapping |
+|---|---|---|
+| `DAILY` | `{}` (none) | `"daily"` → direct |
+| `WEEKDAYS` | `{}` | not used by the library |
+| `WEEKENDS` | `{}` | not used by the library |
+| `SPECIFIC_DAYS` | `{"days": [int 1–7 ISO]}` (Mon=1, Sun=7) | `"weekly"` → propose `{"days": [6]}` (Saturday) — see Q1 |
+| `EVERY_N_DAYS` | `{"n": int≥1, "anchor": ISO date string}` | not used by the library |
+| `MONTHLY_ON_DATE` | `{"day": int 1–31}` | not used by the library |
+| `ONCE` | `{"date": ISO date string}` | not used by the library |
+
+The library only uses two recurrence labels: `"daily"` (15 entries) and `"weekly"` (31 entries). All `"daily"` map cleanly to `RecurrenceType.DAILY` with empty config. All `"weekly"` need the translation per Q1.
+
+`packages/api/src/family_chores_api/schemas.py:validate_recurrence_config()` is the canonical validator — the seeder will use it to verify each translated config before insert, so a typo in the library's mapping would fail seeding loudly rather than producing broken templates.
+
+#### MDI icon verification (42 unique names across the 46 chores)
+
+Verified against `https://pictogrammers.com/library/mdi/` via a research agent. **40 of 42 valid as-shipped.** Two substitutions needed:
+
+| Library entry | Original icon | Status | Substitute |
+|---|---|---|---|
+| `match_socks` | `mdi:sock` | does not exist in current MDI | `mdi:tshirt-crew-outline` (no sock-family icon exists; reuse the laundry-friendly outline variant) |
+| `pack_backpack` | `mdi:backpack` | does not exist in current MDI | `mdi:bag-personal` |
+
+All seven names I flagged as suspicious (`silverware-clean`, `bowl-mix`, `dishwasher-off`, `table-chair`, `dog-side`, `hanger`, `music`) returned 200 and are valid. Will record both substitutions in the JSON file as the actual `icon` value (not as runtime mapping) so the data file stays self-describing.
+
+#### Library content notes
+
+46 entries as specified in §3, no proposed additions. The §3 invitation to "propose additions to reach 50" is declined for this prompt — 46 already covers ages 3–10+ across 11 categories, and adding more without a parenting-research grounding would just be padding.
+
+Categories canonical set (`StrEnum` in core): `bedroom`, `bathroom`, `kitchen`, `laundry`, `pet_care`, `outdoor`, `personal_care`, `schoolwork`, `tidying`, `meals`, `other`. Eleven. Matches §3 verbatim.
+
+#### File layout plan
+
+```
+NEW
+packages/core/src/family_chores_core/data/starter_library.json     46 chores
+packages/core/src/family_chores_core/starter_library.py            JSON loader (parse-only, no DB)
+packages/core/src/family_chores_core/naming.py                     normalize_chore_name()
+packages/core/tests/test_starter_library.py
+packages/core/tests/test_naming.py
+packages/db/src/family_chores_db/migrations/versions/0004_add_chore_templates.py
+packages/db/tests/test_migration_0004.py
+packages/api/src/family_chores_api/services/starter_seeding.py     seeder (DB-aware, household-scoped, idempotent, suppression-aware)
+packages/api/src/family_chores_api/routers/suggestions.py
+packages/api/tests/test_suggestions.py
+family_chores/tests/test_seeding.py                                addon-level integration tests
+family_chores/tests/test_template_no_ha_sync.py                    defensive HA-sync test (§7)
+family_chores/frontend/src/api/suggestions.ts                      client + TanStack Query hooks
+family_chores/frontend/src/components/BrowseSuggestionsPanel.tsx
+family_chores/frontend/src/components/ManageSuggestionsView.tsx
+family_chores/frontend/src/components/__tests__/{BrowseSuggestionsPanel,ManageSuggestionsView}.test.tsx
+
+EDITED
+packages/db/src/family_chores_db/models.py                         + ChoreTemplate, HouseholdStarterSuppression; +Chore.template_id, +Chore.ephemeral
+packages/api/src/family_chores_api/schemas.py                      + SuggestionRead/Create/Update; ChoreCreate gains template_id, save_as_suggestion; new ChoreCreateResult shape
+packages/api/src/family_chores_api/routers/__init__.py             register suggestions router
+packages/api/src/family_chores_api/routers/chores.py               POST creates a template alongside the chore when save_as_suggestion=True
+family_chores/src/family_chores_addon/app.py                       call starter_seeding from lifespan after bootstrap, before scheduler
+family_chores/frontend/src/views/parent/ChoresTab.tsx              add Browse Suggestions section + Save-as-suggestion checkbox
+family_chores/frontend/src/api/types.ts                            new types
+
+DOCS (step 11 only — not before)
+family_chores/DOCS.md                                              new "Suggestions" section under First-run setup
+family_chores/CHANGELOG.md                                         [Unreleased] entry — DRAFT only, no version
+docs/roadmap.md                                                    if "chore suggestions" was in "near-term" → move to "Landed" (no version tag)
+```
+
+#### Test baseline
+
+Today: **364 tests** total across all workspaces (per `docs/architecture.md` and verified during the polish-work group-6 lint run).
+
+Target after this feature: **405–420** (+40–55 net new) per §8. Composition:
+- core: +20–25 (naming + starter library validation)
+- db: +6–8 (migration round-trip + constraint enforcement)
+- api: +12–18 (suggestions endpoints + chore-POST with template creation + scoping)
+- addon: +10–14 (seeding integration + suppression + reset + HA-sync defensive)
+- frontend: +6–10 (browse panel + manage view + first-run badge state)
+
+### Open questions (block before step 1 begins)
+
+**Q1 — How to translate `"weekly"` library entries to a real recurrence config?**
+The library JSON uses `"weekly"` for 31 of 46 entries (e.g. `tidy_bedroom`, `walk_dog`, `take_out_trash`). The recurrence engine has no WEEKLY type. §3 explicitly says "If a recurrence type requires config and the library entry can't provide a sensible default, either (a) add a default to this prompt's library (e.g. Saturday for weekly) or (b) omit that recurrence type from starter entries."
+
+  **Recommendation: (a) with Saturday default.** Map `"weekly"` → `RecurrenceType.SPECIFIC_DAYS` with `{"days": [6]}` (ISO Saturday). The library JSON keeps the friendly `"weekly"` label; the seeder does the translation. Alternative: store the translated form in the JSON directly (`default_recurrence_type: "specific_days"`, `default_recurrence_config: {"days": [6]}`) — uglier JSON but truthful. I prefer the friendly-label-with-translation approach because the JSON is also a human-readable starter catalogue.
+
+  Either way, the `default_recurrence_config` field stored on the template row is the engine-canonical form (`{"days": [6]}`), not the library label.
+
+**Q2 — Member.age column?**
+§1.3 says the Suggestions panel defaults to filtering by the youngest member's age "from `member.age` if we have it." Today there is no `member.age`. Two options:
+
+  - **(A)** Skip the age-default. Panel defaults to "any" age slider; parent sets it manually if they want age-filtering. Suggestions still carry `age_min`/`age_max` and the slider still works on user input. **Lower scope, recommended.**
+  - **(B)** Add `Member.age: int | None` column in this migration. Enables the youngest-default. Adds a Member edit-form field (kid-facing? No — parent-facing in Members tab). Crosses into Member model territory the prompt doesn't mention.
+
+**Q3 — Confirm icon substitutions** in the verification table above:
+  - `mdi:sock` → `mdi:tshirt-crew-outline` for "Match socks"
+  - `mdi:backpack` → `mdi:bag-personal` for "Pack backpack"
+
+  Both are research-agent verified as existing in current MDI. If you want me to spot-check these against your specific HA frontend MDI version (which may lag the current catalog), say so and I'll WebFetch them directly.
+
+**Q4 — Where does the seeding service live?**
+  - **(A)** `packages/api/src/family_chores_api/services/starter_seeding.py` — shared, the SaaS app would reuse it when provisioning a new household. **Recommended** (consistent with existing `services/` placement).
+  - **(B)** `family_chores/src/family_chores_addon/seeding.py` — addon-only. Simpler now, refactor later if SaaS needs it.
+
+**Q5 — Branch name confirmation.** I propose `feat-chore-suggestions`. Off `main @ 3965ae3`. OK?
+
+### Action plan summary (after Q1–Q5 resolved)
+
+12 commits, in this order, each runnable with green tests. PAUSE points marked.
+
+| # | Commit | Files |
+|---|---|---|
+| 1 | `feat(core): starter library JSON + tests` | `data/starter_library.json`, `starter_library.py` (loader), `tests/test_starter_library.py` |
+| 2 | `feat(core): normalize_chore_name + tests` | `naming.py`, `tests/test_naming.py` |
+| 3 | `feat(db): migration 0004 — chore templates + suppression + chore.template_id/ephemeral` | `models.py` edits, `0004_add_chore_templates.py`, `tests/test_migration_0004.py` |
+| 4 | `feat(addon): starter library seeding + suppression handling` (**PAUSE for review after this**) | `services/starter_seeding.py` (api), `app.py` (addon) lifespan call, `tests/test_seeding.py` (addon) |
+| 5 | `feat(api): /api/suggestions/* + chore POST template creation` | `routers/suggestions.py`, `routers/chores.py` edits, `schemas.py` edits, `tests/test_suggestions.py` |
+| 6 | `feat(frontend): Browse Suggestions panel inside Add Chore form` | `BrowseSuggestionsPanel.tsx`, `api/suggestions.ts`, `ChoresTab.tsx` integration, `__tests__/BrowseSuggestionsPanel.test.tsx` |
+| 7 | `feat(frontend): save-as-suggestion checkbox + POST flow-through` (**PAUSE for review after this**) | `ChoresTab.tsx` edits, `api/types.ts` extensions, frontend test additions |
+| 8 | `feat(frontend): Manage Suggestions view` | `ManageSuggestionsView.tsx`, `__tests__/ManageSuggestionsView.test.tsx`, `BrowseSuggestionsPanel.tsx` link |
+| 9 | `feat(frontend): first-run discoverability badge` | `ChoresTab.tsx` edits, `app_config` flag plumbing |
+| 10 | `test(addon): defensive HA-sync test for templates` | `tests/test_template_no_ha_sync.py` |
+| 11 | `docs(suggestions): DOCS.md section + CHANGELOG draft + roadmap update` | `DOCS.md`, `CHANGELOG.md`, `docs/roadmap.md` |
+| 12 | (verification only, no commit) | full `./scripts/lint.sh` green; final summary |
+
+### What this section is NOT yet doing
+
+- **Not bumping `family_chores/config.yaml`.** Per §11 #9 and CONTRIBUTING.md, version bumps happen at human-decided tag time. The CHANGELOG entry in step 11 will be `[Unreleased]`, not `[0.3.0]`.
+- **Not touching the kid-facing UI, recurrence engine, streak/points logic, approval flow, or HA bridge.** Per §11.
+- **Not exposing the word "template" in any UI string.** Code uses `chore_template`, UI uses "suggestion".
+- **Not adding a separate tab or sidebar entry.** Add Chore form is the only entry point.
+
+### Pause point
+
+Per prompt §12.2: this commit (DECISIONS.md only — no content files yet) ends the inventory phase. Awaiting human review + answers to Q1–Q5 before starting step 1.

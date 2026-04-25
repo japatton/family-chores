@@ -8,6 +8,16 @@ New feature requests get triaged against this document. If you're thinking of op
 
 The last few notable releases. For the full list, see [`family_chores/CHANGELOG.md`](../family_chores/CHANGELOG.md).
 
+- **Next release (unreleased)** — chore suggestions. Bundled library of
+  46 age-appropriate chore templates seed into the Add Chore form's
+  new "💡 Browse suggestions" panel; tap a template to pre-fill every
+  field. New chores default to saving themselves back into the library
+  for next time. See [DECISIONS §13](../DECISIONS.md) and
+  `family_chores/CHANGELOG.md` `[Unreleased]` for the full shape.
+- **v0.2.4 (2026-04-24)** — clean re-cut after v0.2.2 + v0.2.3 tag
+  mishaps. Manifest version field wasn't bumped at v0.2.2/v0.2.3 tag
+  time so HA Supervisor never offered them; v0.2.4 ships the polish
+  documentation + the new icon/logo PNGs end-to-end.
 - **v0.2.1 (2026-04-24)** — clean re-cut of 0.2.0 with correct image tagging. The v0.2.0 git tag had preceded the `image:` field fix, so Supervisor couldn't find the `0.2.0` tag on GHCR; 0.2.1 is byte-identical in behaviour, correctly tagged end-to-end.
 - **v0.2.0 (2026-04-23)** — internal monorepo refactor. No user-facing changes; HA Supervisor now pulls pre-built images from GHCR instead of building locally. See [`docs/architecture.md`](architecture.md) for the resulting shape.
 - **v0.1.0** — first publicly installable release: kid-friendly tablet UI, parent mode behind a PIN, seven recurrence rules, HA entity mirror + Local-Todo sync, Lovelace card, full test suite, CI/CD.

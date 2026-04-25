@@ -6,6 +6,14 @@ Each submodule defines a `router: APIRouter`. `create_app` mounts them all.
 another APIRouter; the WSManager singleton lives in `family_chores_api.events`.)
 """
 
-from family_chores_api.routers import admin, auth, chores, instances, members, ws
+from family_chores_api.routers import (
+    admin,
+    auth,
+    chores,
+    instances,
+    members,
+    suggestions,
+    ws,
+)
 
-__all__ = ["admin", "auth", "chores", "instances", "members", "ws"]
+__all__ = ["admin", "auth", "chores", "instances", "members", "suggestions", "ws"]
