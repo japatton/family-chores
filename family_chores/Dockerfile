@@ -58,16 +58,16 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     FAMILY_CHORES_DATA_DIR=/data
 
-# Build tools for Pillow/argon2; stripped out after install.
+# Build tools for argon2-cffi; stripped out after install. Pillow's
+# image-codec deps (jpeg-dev, zlib-dev, libjpeg-turbo, zlib) were
+# previously here for an avatar-re-encode path that was specced but
+# never built — see F-S003 + the pyproject.toml comment. Restore them
+# alongside Pillow if avatar uploads land later.
 RUN apk add --no-cache --virtual .build-deps \
         build-base \
         libffi-dev \
         openssl-dev \
-        jpeg-dev \
-        zlib-dev \
     && apk add --no-cache \
-        libjpeg-turbo \
-        zlib \
         tini
 
 WORKDIR /app
