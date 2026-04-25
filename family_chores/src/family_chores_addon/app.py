@@ -134,6 +134,10 @@ def _build_lifespan(opts: Options):  # type: ignore[no-untyped-def]
             )
         await app.state.bridge.start()
 
+        # F-S004 fix: surface a rollover failure into /api/info so the SPA
+        # can render a banner. Don't fail-fast — the addon serves degraded-
+        # but-running better than crash-looping on a transient error.
+        app.state.rollover_warning = None
         try:
             async with app.state.session_factory() as session:
                 summary = await run_rollover(
@@ -147,8 +151,13 @@ def _build_lifespan(opts: Options):  # type: ignore[no-untyped-def]
                     summary.instances_generated,
                     summary.members_updated,
                 )
-        except Exception:
+        except Exception as exc:
             log.exception("startup catch-up rollover failed; continuing")
+            # Truncate so a giant traceback's first-line representation
+            # doesn't blow up /api/info responses. The full traceback is
+            # in the addon log via log.exception above.
+            summary = f"{type(exc).__name__}: {exc}"
+            app.state.rollover_warning = summary[:500]
 
         # Startup reconcile — converges HA todo state with SQLite after any
         # downtime. Best-effort: a network blip doesn't block the app from
@@ -211,6 +220,9 @@ def create_app(options: Options | None = None) -> FastAPI:
             "timezone": getattr(app.state, "effective_timezone", opts.effective_timezone),
             "ha_connected": getattr(app.state, "ha_client", None) is not None,
             "bootstrap": _bootstrap_payload(app),
+            # F-S004: present only when startup catch-up rollover failed.
+            # SPA renders a banner; the maintainer's log has the full trace.
+            "rollover_warning": getattr(app.state, "rollover_warning", None),
         }
 
     # Static mount LAST — it catches `/` and would shadow any later routes.

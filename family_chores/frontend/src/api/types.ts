@@ -234,4 +234,8 @@ export interface InfoResponse {
   timezone: string
   ha_connected: boolean
   bootstrap: { action: string; banner: string | null } | null
+  // F-S004: when the addon's startup catch-up rollover throws, the
+  // exception summary surfaces here so the SPA can render a banner.
+  // null when rollover succeeded (the common case).
+  rollover_warning: string | null
 }
