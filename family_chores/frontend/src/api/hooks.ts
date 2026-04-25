@@ -283,11 +283,16 @@ export function useCreateSuggestion() {
   })
 }
 
-export function useUpdateSuggestion(id: string) {
+/**
+ * Update an arbitrary suggestion. The id flows through the mutation
+ * variables (not a closure) so the same hook instance can patch any
+ * suggestion in a list — used by the Manage Suggestions view.
+ */
+export function useUpdateSuggestion() {
   const qc = useQueryClient()
   const token = useParentStore((s) => (s.isActive() ? s.token : null))
   return useMutation({
-    mutationFn: (body: SuggestionUpdate) =>
+    mutationFn: ({ id, body }: { id: string; body: SuggestionUpdate }) =>
       apiFetch<Suggestion>(`/suggestions/${id}`, {
         method: 'PATCH',
         parentToken: token,

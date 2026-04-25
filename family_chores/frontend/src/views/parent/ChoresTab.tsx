@@ -4,11 +4,20 @@ import {
   useChores,
   useCreateChore,
   useDeleteChore,
+  useDeleteSuggestion,
   useMembers,
+  useResetSuggestions,
   useSuggestions,
+  useUpdateSuggestion,
 } from '../../api/hooks'
-import type { ChoreCreate, RecurrenceType, Suggestion } from '../../api/types'
+import type {
+  ChoreCreate,
+  RecurrenceType,
+  Suggestion,
+  SuggestionUpdate,
+} from '../../api/types'
 import { BrowseSuggestionsPanel } from '../../components/BrowseSuggestionsPanel'
+import { ManageSuggestionsView } from '../../components/ManageSuggestionsView'
 
 const RECURRENCE_OPTIONS: { value: RecurrenceType; label: string }[] = [
   { value: 'daily', label: 'Every day' },
@@ -47,10 +56,18 @@ export function ChoresTab() {
   )
   const [error, setError] = useState<string | null>(null)
 
-  // Browse Suggestions panel state. Lazy-loaded — useSuggestions only
-  // fires when the panel is opened.
-  const [panelOpen, setPanelOpen] = useState(false)
+  // Suggestions panel state — three modes: closed, "browse" (default
+  // when opened), or "manage" (the secondary view reached from the
+  // "Manage my suggestions" link in the browse panel). Lazy-loaded —
+  // useSuggestions only fires when the panel is open.
+  const [panelMode, setPanelMode] = useState<'closed' | 'browse' | 'manage'>(
+    'closed',
+  )
+  const panelOpen = panelMode !== 'closed'
   const suggestions = useSuggestions(undefined, { enabled: panelOpen })
+  const updateSuggestion = useUpdateSuggestion()
+  const deleteSuggestion = useDeleteSuggestion()
+  const resetSuggestions = useResetSuggestions()
 
   // Save-as-suggestion checkbox (DECISIONS §13 §6.1) — default checked.
   // The flag flows through to the chore POST body; the backend silently
@@ -117,7 +134,7 @@ export function ChoresTab() {
     if (s.default_recurrence_type === 'once' && typeof cfg.date === 'string') {
       setOnceDate(cfg.date)
     }
-    setPanelOpen(false)
+    setPanelMode('closed')
     setError(null)
   }
 
@@ -205,7 +222,9 @@ export function ChoresTab() {
           <div className="text-fluid-base font-black text-brand-900">Add a chore</div>
           <button
             type="button"
-            onClick={() => setPanelOpen((v) => !v)}
+            onClick={() =>
+              setPanelMode((m) => (m === 'closed' ? 'browse' : 'closed'))
+            }
             aria-expanded={panelOpen}
             aria-controls="browse-suggestions-region"
             className="min-h-touch px-4 rounded-2xl font-bold text-fluid-sm bg-brand-50 text-brand-700 border border-brand-100"
@@ -224,10 +243,21 @@ export function ChoresTab() {
               >
                 Couldn’t load suggestions. {(suggestions.error as Error)?.message}
               </p>
+            ) : panelMode === 'manage' ? (
+              <ManageSuggestionsView
+                suggestions={suggestions.data ?? []}
+                onUpdate={(id, body: SuggestionUpdate) =>
+                  updateSuggestion.mutateAsync({ id, body })
+                }
+                onDelete={(s) => deleteSuggestion.mutateAsync(s.id)}
+                onReset={() => resetSuggestions.mutateAsync()}
+                onBack={() => setPanelMode('browse')}
+              />
             ) : (
               <BrowseSuggestionsPanel
                 suggestions={suggestions.data ?? []}
                 onSelect={applySuggestion}
+                onManage={() => setPanelMode('manage')}
               />
             )}
           </div>
