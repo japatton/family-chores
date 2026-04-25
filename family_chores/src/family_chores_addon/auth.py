@@ -36,7 +36,18 @@ class IngressAuthStrategy:
 
     @staticmethod
     def _user_from(request: Request) -> str:
-        """Pull `X-Remote-User`; fall back to `"anonymous"` for local dev."""
+        """Pull `X-Remote-User`; fall back to `"anonymous"` for local dev.
+
+        Trust model (F-X001 in the code review): the addon listens on a
+        Supervisor-managed network. HA Ingress is the only path external
+        traffic can take to reach this port; Supervisor injects
+        `X-Remote-User` on its way through. Other addons / HA automations
+        on the supervisor network *can* reach the port directly with a
+        spoofed header, but doing so doesn't escalate — parent-mode
+        actions are gated by the JWT (PIN required to mint), not by
+        this header. The practical impact of a spoof is ActivityLog
+        actor-name pollution. See SECURITY.md for the full threat model.
+        """
         return request.headers.get("X-Remote-User", "").strip() or "anonymous"
 
     async def identify(self, request: Request) -> Identity:
