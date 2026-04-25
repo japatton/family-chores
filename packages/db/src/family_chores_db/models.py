@@ -215,6 +215,12 @@ class MemberStats(Base):
     week_anchor: Mapped[date_type | None] = mapped_column(Date)
     streak: Mapped[int] = mapped_column(nullable=False, default=0)
     last_all_done_date: Mapped[date_type | None] = mapped_column(Date)
+    # Cumulative parent-applied adjustments via /api/members/{id}/points/adjust.
+    # Recompute folds this into `points_total` so adjustments survive the
+    # midnight rollover (DECISIONS §16, F-S001 fix). Signed — a negative
+    # cumulative bonus represents a net penalty that the member earns back
+    # through chore completions before their displayed `points_total` rises.
+    bonus_points_total: Mapped[int] = mapped_column(nullable=False, default=0)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utcnow, onupdate=utcnow
     )
@@ -225,6 +231,7 @@ class MemberStats(Base):
         CheckConstraint("points_total >= 0", name="ck_member_stats_total_nonneg"),
         CheckConstraint("points_this_week >= 0", name="ck_member_stats_week_nonneg"),
         CheckConstraint("streak >= 0", name="ck_member_stats_streak_nonneg"),
+        # Deliberately no `bonus_points_total >= 0` — see DECISIONS §16.
     )
 
     member: Mapped[Member] = relationship(back_populates="stats")

@@ -317,8 +317,15 @@ async def adjust_member_points(
 ) -> MemberStats:
     """Manually add (or subtract via negative delta) to a member's lifetime total.
 
-    Clamps total at 0 — negative deltas past the current total leave the
-    balance at 0 rather than going negative.
+    The displayed `points_total` is clamped at 0 — negative deltas past the
+    current balance show as zero rather than negative.
+
+    The cumulative adjustment is also recorded in `bonus_points_total`
+    (signed) so it survives the midnight rollover. `recompute_stats_for_member`
+    folds bonus_points_total back into points_total via
+    `max(0, sum(chore_instances) + bonus_points_total)`. See DECISIONS §16
+    for the F-S001 fix and the "negative cumulative bonus = persistent
+    penalty" semantic.
     """
     member = await _load_member(session, member_id, household_id)
     stats_res = await session.execute(
@@ -337,10 +344,16 @@ async def adjust_member_points(
             points_total=0,
             points_this_week=0,
             streak=0,
+            bonus_points_total=0,
             household_id=household_id,
         )
         session.add(stats)
 
+    # Persist the adjustment to bonus_points_total (signed — negatives OK)
+    # so the next recompute can replay it. Then update points_total in
+    # place for immediate UI feedback; recompute will rebuild the same
+    # value from chore-instance sums + bonus.
+    stats.bonus_points_total = (stats.bonus_points_total or 0) + delta
     stats.points_total = max(0, (stats.points_total or 0) + delta)
 
     _log(
