@@ -123,7 +123,15 @@ def _build_lifespan(opts: Options):  # type: ignore[no-untyped-def]
         if ha_client is None:
             app.state.bridge = NoOpBridge()
         else:
-            app.state.bridge = HABridge(ha_client, app.state.session_factory)
+            app.state.bridge = HABridge(
+                ha_client,
+                app.state.session_factory,
+                # F-S002 fix: read the effective tz lazily off app.state
+                # so the bridge's `_today_progress_pct` uses the user-
+                # local date rather than UTC. Same callable shape as the
+                # auth strategy's secret_provider.
+                timezone_provider=lambda: cast(str, app.state.effective_timezone),
+            )
         await app.state.bridge.start()
 
         try:

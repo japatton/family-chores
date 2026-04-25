@@ -89,6 +89,52 @@ async def test_force_flush_publishes_member_sensors(async_session_factory):
 
 
 @pytest.mark.asyncio
+async def test_today_progress_pct_uses_tz_provider_when_set(
+    async_session_factory, monkeypatch
+):
+    """F-S002 regression: bridge must use the tz_provider's local-today
+    when computing today_progress_pct, not utcnow().date(), so the
+    sensor doesn't show yesterday's progress during the local-vs-UTC
+    midnight gap.
+
+    Pin "now" to 2026-04-22 03:00 UTC. In America/Los_Angeles (UTC-8),
+    local date is still 2026-04-21. The seeded instance has
+    date=2026-04-21. With the tz_provider set, the bridge sees that
+    instance as "today's". Without the tz_provider, it would compute
+    today=2026-04-22 (UTC date) and miss the instance entirely.
+    """
+    from datetime import datetime
+
+    from family_chores_core import time as time_module
+
+    fake_now = datetime(2026, 4, 22, 3, 0, 0)
+    monkeypatch.setattr(time_module, "utcnow", lambda: fake_now)
+
+    async with async_session_factory() as s:
+        alice, _chore, inst = await _seed(s)
+        inst.state = InstanceState.DONE
+        await s.commit()
+
+    fake = FakeHAClient()
+    bridge = HABridge(
+        fake,
+        async_session_factory,
+        timezone_provider=lambda: "America/Los_Angeles",
+    )
+    bridge.notify_member_dirty(alice.id)
+    await bridge.force_flush()
+
+    points_calls = _collect_set_state_calls(
+        fake, sensor_entity_for_member_points("alice")
+    )
+    _, _, attrs = points_calls[0]
+    # 1 done / 1 total instance for today (in Pacific) = 100%.
+    assert attrs["today_progress_pct"] == 100, (
+        "tz_provider must override the UTC fallback (F-S002)"
+    )
+
+
+@pytest.mark.asyncio
 async def test_force_flush_publishes_pending_approvals(async_session_factory):
     async with async_session_factory() as s:
         alice, chore, inst = await _seed(s, ha_todo_entity_id=None)
