@@ -1,7 +1,14 @@
 import { useState } from 'react'
 import { APIError } from '../../api/client'
-import { useChores, useCreateChore, useDeleteChore, useMembers } from '../../api/hooks'
-import type { ChoreCreate, RecurrenceType } from '../../api/types'
+import {
+  useChores,
+  useCreateChore,
+  useDeleteChore,
+  useMembers,
+  useSuggestions,
+} from '../../api/hooks'
+import type { ChoreCreate, RecurrenceType, Suggestion } from '../../api/types'
+import { BrowseSuggestionsPanel } from '../../components/BrowseSuggestionsPanel'
 
 const RECURRENCE_OPTIONS: { value: RecurrenceType; label: string }[] = [
   { value: 'daily', label: 'Every day' },
@@ -40,6 +47,11 @@ export function ChoresTab() {
   )
   const [error, setError] = useState<string | null>(null)
 
+  // Browse Suggestions panel state. Lazy-loaded — useSuggestions only
+  // fires when the panel is opened.
+  const [panelOpen, setPanelOpen] = useState(false)
+  const suggestions = useSuggestions(undefined, { enabled: panelOpen })
+
   if (chores.isLoading || members.isLoading) {
     return <p className="text-brand-700">Loading…</p>
   }
@@ -57,6 +69,41 @@ export function ChoresTab() {
       default:
         return {}
     }
+  }
+
+  /**
+   * Pre-fill every form field from a suggestion. Pulls the per-recurrence-
+   * type state out of `default_recurrence_config` so the right secondary
+   * controls populate too. Closes the panel afterwards (DECISIONS §13 §6.1).
+   */
+  const applySuggestion = (s: Suggestion) => {
+    const cfg = s.default_recurrence_config as Record<string, unknown>
+    setDraft({
+      name: s.name,
+      icon: s.icon,
+      points: s.points_suggested,
+      description: s.description,
+      recurrence_type: s.default_recurrence_type,
+      recurrence_config: cfg,
+      assigned_member_ids: draft.assigned_member_ids ?? [],
+      active: true,
+      template_id: s.id,
+    })
+    if (s.default_recurrence_type === 'specific_days' && Array.isArray(cfg.days)) {
+      setSpecificDays((cfg.days as number[]).slice())
+    }
+    if (s.default_recurrence_type === 'every_n_days') {
+      if (typeof cfg.n === 'number') setEveryN(String(cfg.n))
+      if (typeof cfg.anchor === 'string') setEveryAnchor(cfg.anchor)
+    }
+    if (s.default_recurrence_type === 'monthly_on_date' && typeof cfg.day === 'number') {
+      setMonthDay(String(cfg.day))
+    }
+    if (s.default_recurrence_type === 'once' && typeof cfg.date === 'string') {
+      setOnceDate(cfg.date)
+    }
+    setPanelOpen(false)
+    setError(null)
   }
 
   const submit = () => {
@@ -129,7 +176,37 @@ export function ChoresTab() {
       </ul>
 
       <div className="rounded-xl4 bg-white p-5 shadow-card space-y-3">
-        <div className="text-fluid-base font-black text-brand-900">Add a chore</div>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="text-fluid-base font-black text-brand-900">Add a chore</div>
+          <button
+            type="button"
+            onClick={() => setPanelOpen((v) => !v)}
+            aria-expanded={panelOpen}
+            aria-controls="browse-suggestions-region"
+            className="min-h-touch px-4 rounded-2xl font-bold text-fluid-sm bg-brand-50 text-brand-700 border border-brand-100"
+          >
+            💡 {panelOpen ? 'Hide suggestions' : 'Browse suggestions'}
+          </button>
+        </div>
+        {panelOpen && (
+          <div id="browse-suggestions-region">
+            {suggestions.isLoading ? (
+              <p className="text-fluid-sm text-brand-700/70">Loading suggestions…</p>
+            ) : suggestions.isError ? (
+              <p
+                role="alert"
+                className="text-fluid-sm text-rose-600 font-semibold"
+              >
+                Couldn’t load suggestions. {(suggestions.error as Error)?.message}
+              </p>
+            ) : (
+              <BrowseSuggestionsPanel
+                suggestions={suggestions.data ?? []}
+                onSelect={applySuggestion}
+              />
+            )}
+          </div>
+        )}
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1">
             <span className="text-fluid-xs font-bold text-brand-700">Name</span>

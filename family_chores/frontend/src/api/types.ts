@@ -71,6 +71,9 @@ export interface Chore {
   time_window_start: string | null
   time_window_end: string | null
   assigned_member_ids: number[]
+  // Chore-templates feature (DECISIONS §13). Records which suggestion
+  // this chore was spawned from, if any. Informational only.
+  template_id?: string | null
 }
 
 export interface ChoreCreate {
@@ -85,6 +88,74 @@ export interface ChoreCreate {
   time_window_start?: string | null
   time_window_end?: string | null
   assigned_member_ids?: number[]
+  // Chore-templates feature (DECISIONS §13).
+  // template_id pre-fills the form from a Browse Suggestions tap.
+  // save_as_suggestion defaults to true server-side; UI passes the
+  // checkbox state (default checked) here.
+  template_id?: string | null
+  save_as_suggestion?: boolean
+}
+
+export interface ChoreCreateResult extends Chore {
+  template_created: boolean
+}
+
+// ─── suggestions (chore_template) ─────────────────────────────────────────
+
+export type SuggestionSource = 'starter' | 'custom'
+
+export interface Suggestion {
+  id: string
+  name: string
+  icon: string | null
+  category: string | null
+  age_min: number | null
+  age_max: number | null
+  points_suggested: number
+  default_recurrence_type: RecurrenceType
+  default_recurrence_config: Record<string, unknown>
+  description: string | null
+  source: SuggestionSource
+  starter_key: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SuggestionCreate {
+  name: string
+  icon?: string | null
+  category?: string | null
+  age_min?: number | null
+  age_max?: number | null
+  points_suggested?: number
+  default_recurrence_type: RecurrenceType
+  default_recurrence_config?: Record<string, unknown>
+  description?: string | null
+}
+
+export interface SuggestionUpdate {
+  name?: string
+  icon?: string | null
+  category?: string | null
+  age_min?: number | null
+  age_max?: number | null
+  points_suggested?: number
+  default_recurrence_type?: RecurrenceType
+  default_recurrence_config?: Record<string, unknown>
+  description?: string | null
+}
+
+export interface SuggestionResetResult {
+  suppressions_cleared: number
+  seeded: number
+  library_version: number
+}
+
+export interface SuggestionFilters {
+  category?: string
+  age?: number
+  source?: 'all' | SuggestionSource
+  q?: string
 }
 
 export interface Instance {
