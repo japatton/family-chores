@@ -98,11 +98,10 @@ async def test_reconcile_does_not_query_chore_template_table(
     await async_session.commit()
 
     queries: list[str] = []
-    real_execute = async_session_factory().__aenter__
-
-    # Patch the session_factory call site differently: wrap the engine's
-    # execute. Cleaner approach — use SQLAlchemy event listeners on the
-    # underlying sync engine.
+    # Use a SQLAlchemy event listener on the underlying sync engine —
+    # cleaner than monkey-patching session.execute, and captures every
+    # statement the reconciler emits regardless of which session
+    # instance it opens.
     from sqlalchemy import event
 
     engine = async_session.bind
