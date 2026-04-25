@@ -5,6 +5,99 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Chore suggestions** (DECISIONS §13). The Add Chore form gains a
+  "💡 Browse suggestions" affordance that opens an in-place panel
+  showing a bundled library of **46 age-appropriate chore templates**
+  spanning ages 3–12 across 11 categories (bedroom, bathroom, kitchen,
+  laundry, pet care, outdoor, personal care, schoolwork, tidying,
+  meals, other). Library content is grounded in American Academy of
+  Pediatrics and AACAP age-appropriate-chore guidance. Search the
+  list by name, filter by age, multi-select category chips, or scope
+  to starter / custom only. Tapping a suggestion pre-fills name, icon,
+  points, recurrence rule + config, and description in one click —
+  parent then edits anything they want and saves normally.
+- **Save-as-suggestion checkbox** below the Add chore button,
+  **default checked**. Any new chore is saved back into the library
+  by default so it's a one-tap pull next time. If the name dedups
+  to an existing suggestion (starter or custom), the chore links to
+  the existing one silently — no duplicates. A subtle "Saved 'X' as
+  a suggestion for next time" status appears for 4 seconds after
+  saves that produced a brand-new template.
+- **Manage Suggestions view** reached from the "Manage my
+  suggestions" link in the Browse panel. Lists custom suggestions
+  with Edit / Delete; lists starter suggestions in a collapsed
+  section with a Hide button (starter names are immutable; other
+  fields editable). A quiet "Reset starter suggestions" link at the
+  bottom restores any starters the parent had hidden.
+- **First-run "✨ New" badge** beside the Browse suggestions button.
+  One-shot per device, persisted in browser localStorage; disappears
+  on first tap and never reappears.
+- **Six new HTTP endpoints** under `/api/suggestions/` for
+  programmatic access (list with filters, get, create custom, patch,
+  delete with starter-suppression handling, reset). All parent-required.
+
+### Changed
+
+- `POST /api/chores` response shape extended with `template_id`
+  (informational — the suggestion this chore was spawned from, if
+  any) and `template_created` (boolean — true when this POST also
+  added a new suggestion). `GET` and `PATCH` /api/chores responses
+  also gain `template_id`. Backward compatible — clients that
+  ignore the new fields are unaffected.
+- `POST /api/chores` request body accepts two new optional fields:
+  `template_id` (records source suggestion, validated against the
+  current household) and `save_as_suggestion` (default `true`,
+  drives the auto-save-to-library behavior).
+
+### Migration
+
+- New schema migration `0004_add_chore_templates`. Adds:
+    `chore_template` table (UUID PK, household_id, name +
+    name_normalized for dedup, icon, category, age_min/max,
+    points_suggested, default_recurrence_type + config, description,
+    source enum {starter, custom}, starter_key, timestamps; UNIQUE
+    on (household_id, name_normalized) and (household_id, starter_key);
+    composite index on (household_id, category)).
+    `household_starter_suppression` table (composite PK on
+    (household_id, starter_key) + suppressed_at).
+    Two new columns on `chores`: `template_id` (nullable FK ON
+    DELETE SET NULL) and `ephemeral` (BOOLEAN NOT NULL DEFAULT
+    FALSE).
+  Existing chore rows pick up `template_id=NULL`, `ephemeral=FALSE`
+  on upgrade — no data backfill needed.
+- The first add-on boot after upgrade **seeds 46 starter
+  suggestions** into the database (idempotent — re-running is a
+  no-op). Future library upgrades only seed new entries; existing
+  rows are never overwritten so parent customizations survive.
+
+### Privacy / HA
+
+- **No new HA entities, events, or sensors.** Templates are a
+  parent-side authoring convenience, not active state. Verified by
+  three defensive tests in
+  `family_chores/tests/test_template_no_ha_sync.py` that pin the
+  contract structurally (the reconciler's SQL is asserted to never
+  reference the chore_template or suppression tables).
+
+### Tests
+
+- 153 net new tests across the workspace. Total runs from 364 → 517+.
+  Breakdown:
+  - `packages/core` — starter library validation (26) + name
+    normalization (19)
+  - `packages/db` — migration 0004 round-trip + constraint
+    enforcement (15)
+  - `packages/api` services — seeder integration tests live in
+    `family_chores/tests/test_seeding.py` (12)
+  - `family_chores/tests` — suggestions API (24) + chores POST
+    extension (8) + HA-sync defensive (3)
+  - `family_chores/frontend` — BrowseSuggestionsPanel (9) +
+    ManageSuggestionsView (10) + useFirstRunBadge (5)
+
 ## [0.2.4] — 2026-04-24
 
 ### Added
