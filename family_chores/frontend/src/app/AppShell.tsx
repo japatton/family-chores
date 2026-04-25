@@ -16,6 +16,10 @@ export function AppShell() {
     info.data && info.data.ha_connected === false
       ? 'Home Assistant bridge not connected — chores still work, but mirroring to HA is paused.'
       : null
+  // F-S004: surfaces when startup catch-up rollover failed. Today's
+  // chore instances may be empty until something else triggers
+  // generate_instances (creating/editing a chore, or admin rebuild).
+  const rolloverWarning = info.data?.rollover_warning ?? null
 
   return (
     <div className="min-h-screen flex flex-col relative">
@@ -55,9 +59,16 @@ export function AppShell() {
         </nav>
       </header>
 
-      {(bootstrapBanner || haBanner) && (
+      {(bootstrapBanner || haBanner || rolloverWarning) && (
         <div className="px-6 sm:px-10 pt-4 space-y-2">
           {bootstrapBanner && <Banner variant="warn">{bootstrapBanner}</Banner>}
+          {rolloverWarning && (
+            <Banner variant="warn">
+              Startup catch-up rollover failed — today’s chores may be empty
+              until you add or edit a chore. Check the add-on log for the
+              full error: <code>{rolloverWarning}</code>
+            </Banner>
+          )}
           {haBanner && <Banner variant="info">{haBanner}</Banner>}
         </div>
       )}

@@ -35,8 +35,11 @@ dependencies = [
     "structlog>=24.1",
     "argon2-cffi>=23.1",
     "pyjwt>=2.8",
-    "pillow>=10.3",
-    "python-multipart>=0.0.9",
+    # Pillow + python-multipart were carried for an avatar-upload + re-encode
+    # path that was specced in DOCS.md / README.md but never built. F-S003
+    # fix: dropped to slim the image (~5 MB Pillow + alpine build-deps for
+    # libjpeg/zlib). If avatar uploads land later, re-add both here AND
+    # restore the build-deps in family_chores/Dockerfile.
 ]
 
 [project.optional-dependencies]

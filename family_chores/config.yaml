@@ -25,6 +25,11 @@ hassio_api: true
 hassio_role: default
 homeassistant_api: true
 auth_api: true
+# Empty `network:` makes the port-exposure model explicit (HA convention
+# per the F-X001 review note). The addon listens on `ingress_port` only
+# inside the supervisor network — Supervisor's ingress proxy is the
+# external entry point. No host-port mapping; no direct LAN exposure.
+network: {}
 options:
   log_level: info
   week_starts_on: monday

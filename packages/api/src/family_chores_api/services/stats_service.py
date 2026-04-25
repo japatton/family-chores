@@ -53,7 +53,12 @@ async def recompute_stats_for_member(
             scoped(ChoreInstance.household_id, household_id),
         )
     )
-    stats.points_total = sum(total_res.scalars().all())
+    chore_sum = sum(total_res.scalars().all())
+    # Fold the cumulative parent adjustment in so it survives the rollover
+    # (DECISIONS §16, F-S001 fix). bonus_points_total is signed; the outer
+    # max(0, ...) preserves the "displayed total can never go negative"
+    # invariant the points_total >= 0 check constraint enforces.
+    stats.points_total = max(0, chore_sum + (stats.bonus_points_total or 0))
 
     this_anchor = week_anchor_for(today, week_starts_on)
     week_res = await session.execute(

@@ -27,6 +27,15 @@ before any real SaaS deployment can write data with non-NULL
   9's integration test (`test_household_scoping.py`) currently works
   around this by using distinct slugs per household.
 
+- **HABridge bypasses `scoped()` for two `ChoreInstance` queries**
+  (`family_chores/src/family_chores_addon/ha/bridge.py` —
+  `_publish_pending_approvals` at ~line 337, `_today_progress_pct` at
+  ~line 317). Single-tenant addon mode is byte-identical because every
+  row has `household_id = NULL`, but a multi-tenant deployment would
+  count cross-household instances. Fix: thread `household_id` through
+  `notify_*` and the flush loop, then add `scoped(...)` to both
+  queries. Surfaced in the post-v0.3.0 code review as F-S005.
+
 Neither change is on the Phase 2 refactor's roadmap (the SaaS isn't
 real yet). They become blockers the moment a SaaS deployment writes
 its first non-NULL-household row.

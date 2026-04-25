@@ -220,9 +220,10 @@ fetch remote assets, or send analytics. Updates flow through HA Supervisor
   completion, and activity-log data.
 - `family_chores.db.bak` — pre-migration safety copy (see Backup and
   restore above).
-- Avatars, if uploaded — stored as Pillow-re-encoded files in the same
-  `/data` directory. EXIF and other metadata is stripped during
-  re-encode.
+- Member avatars — the `Member.avatar` column holds a URL string only.
+  An earlier spec called for an in-app upload + Pillow-re-encode path;
+  that was never built and the dep was dropped (see F-S003 in the code
+  review). When/if uploads land, EXIF stripping will land alongside.
 
 ### What's in the logs
 

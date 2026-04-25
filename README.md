@@ -118,7 +118,7 @@ Please read this before opening your Home Assistant instance to family or guests
 
 - The add-on runs **inside HA's trust boundary**. Anyone who can reach HA can reach this add-on. Use HA's own authentication as your real access control.
 - The **parent PIN is a soft lock**, not a security boundary. It exists to stop a curious kid from hitting "delete member" from the tablet. Do not treat it as protection against a motivated attacker.
-- Uploads are re-encoded through Pillow to strip metadata and enforce size limits.
+- The `Member.avatar` field stores a URL string only — there is no upload endpoint today. (An earlier spec called for re-encoding uploads through Pillow; that path was never built and the dep was dropped in F-S003 cleanup.)
 - Logs never contain PIN hashes, JWTs, or the Supervisor token.
 
 For private vulnerability reports, see [`SECURITY.md`](SECURITY.md).

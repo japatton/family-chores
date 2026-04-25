@@ -27,10 +27,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from datetime import date as date_type
 from typing import Any
 
 from family_chores_api.bridge import BridgeProtocol
+from family_chores_core.time import local_today, utcnow
 from family_chores_db.models import (
     Chore,
     ChoreInstance,
@@ -131,10 +133,20 @@ class HABridge(BridgeProtocol):
         session_factory: async_sessionmaker[AsyncSession],
         *,
         debounce_seconds: float = _DEFAULT_DEBOUNCE,
+        timezone_provider: Callable[[], str] | None = None,
     ) -> None:
         self._client = client
         self._session_factory = session_factory
         self._debounce = debounce_seconds
+        # `timezone_provider` is the same callable shape as
+        # `IngressAuthStrategy._secret_provider`: pulls the effective tz
+        # off `app.state` lazily so a future tz-rotation endpoint can flip
+        # it in place. F-S002 fix: `_today_progress_pct` was using
+        # `utcnow().date()`, which under any non-UTC timezone reports
+        # yesterday's progress for the hours between local-midnight and
+        # UTC-midnight. Pass `None` for tests that don't care; production
+        # passes a real provider from the addon's lifespan.
+        self._timezone_provider = timezone_provider
 
         self._dirty_members: set[int] = set()
         self._dirty_approvals = False
@@ -307,13 +319,14 @@ class HABridge(BridgeProtocol):
 
     async def _today_progress_pct(self, session: AsyncSession, member_id: int) -> int:
         """Reuse the same query pattern as `/api/today` but for one member."""
-        from family_chores_core.time import utcnow
-
-        # We don't want to couple to the FastAPI `Options` tz here — use the
-        # stored member_stats.week_anchor? No, that's weekly. Use today in
-        # UTC; the scheduler's midnight job will re-publish with the correct
-        # local date, and this is a projection anyway.
-        today = utcnow().date()
+        # F-S002 fix: use the user-local date when a timezone provider is
+        # available. Falls back to UTC for back-compat with tests that
+        # construct HABridge without one — the failure mode is what F-S002
+        # described (off-by-a-day for hours each morning), not a crash.
+        if self._timezone_provider is not None:
+            today = local_today(self._timezone_provider())
+        else:
+            today = utcnow().date()
         res = await session.execute(
             select(ChoreInstance.state)
             .where(ChoreInstance.member_id == member_id)

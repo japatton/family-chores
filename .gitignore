@@ -34,3 +34,4 @@ node_modules/
 local-data/
 *.tsbuildinfo
 family_chores/frontend/vite.config.js
+reviews/

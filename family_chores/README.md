@@ -60,7 +60,7 @@ and troubleshooting FAQs, see [`DOCS.md`](DOCS.md).
 - The **parent PIN is a soft lock**, not a security boundary — it stops a
   curious kid from hitting "delete member" from the tablet, not a motivated
   attacker.
-- Avatar uploads are re-encoded through Pillow to strip metadata.
+- The `Member.avatar` field stores a URL string only — there is no upload endpoint in the current release.
 - Logs never contain PIN hashes, JWTs, or the Supervisor token.
 
 Full threat model and private vulnerability reporting:
