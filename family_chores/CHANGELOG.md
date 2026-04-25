@@ -5,6 +5,104 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] — 2026-04-25
+
+Patch release addressing all six substantive findings from the
+post-v0.3.0 code review (PR #10). All bug fixes; no new features.
+
+### Fixed
+
+- **Manual point adjustments now survive midnight rollover** (F-S001,
+  HIGH). `recompute_stats_for_member` previously overwrote
+  `MemberStats.points_total` with the chore-instance sum only,
+  silently wiping any bonus a parent had awarded via
+  `POST /api/members/{id}/points/adjust`. Migration 0005 adds
+  `member_stats.bonus_points_total` (signed integer); recompute now
+  folds it into the displayed total via
+  `max(0, chore_sum + bonus_points_total)`. The outer `max(0, ...)`
+  preserves the existing "displayed total never goes negative"
+  invariant.
+- **`today_progress_pct` HA sensor now uses the user's local date**
+  (F-S002, MEDIUM). The bridge previously computed today against
+  `utcnow().date()`, so for any non-UTC timezone the sensor reported
+  yesterday's progress for the hours between local-midnight and
+  UTC-midnight (US Pacific saw this for 8 hours every morning).
+  HABridge now takes a `timezone_provider` callable matching the
+  existing `IngressAuthStrategy.secret_provider` pattern; the addon
+  lifespan passes a closure over `app.state.effective_timezone`.
+- **Startup catch-up rollover failures now surface to the SPA**
+  (F-S004, LOW). Previously logged-only; the kid's Today view stayed
+  empty until something else triggered `generate_instances`. The
+  exception summary lands on `app.state.rollover_warning`, surfaces
+  in `/api/info`, and renders as a warning Banner above the main
+  outlet. Fail-fast was rejected — degraded but running beats
+  crash-looping on a transient error.
+
+### Changed
+
+- **`X-Remote-User` trust boundary documented in code** (F-X001,
+  LOW). `IngressAuthStrategy._user_from()` picks up an 8-line comment
+  explaining that the trust is network-boundary-enforced (Supervisor-
+  managed addon network, Ingress is the only external path), not
+  request-content-enforced. `family_chores/config.yaml` adds an
+  explicit `network: {}` block so the port-exposure decision is
+  auditable. **No runtime auth change** — the documented boundary
+  was already the actual behaviour.
+
+### Removed
+
+- **Pillow + python-multipart dropped from runtime deps** (F-S003,
+  LOW). Both were carried for an avatar-upload + re-encode flow that
+  was specced in DOCS.md / README.md but never built. Trims ~5 MB of
+  Pillow + alpine build-deps (`jpeg-dev`, `zlib-dev`, `libjpeg-turbo`,
+  `zlib`) from every multi-arch image. `README.md`,
+  `family_chores/README.md`, and `family_chores/DOCS.md` updated to
+  match the URL-only reality of the `Member.avatar` field. Restoring
+  the upload path means re-adding both deps + the build-deps in
+  `family_chores/Dockerfile`; commits in PR #10 have the inline
+  comments to make that easy.
+
+### Internal
+
+- `TODO_POST_REFACTOR.md` gains an entry for two HABridge queries
+  that bypass `scoped()` (F-S005, LOW). Single-tenant addon mode is
+  byte-identical because every row has `household_id = NULL`; this
+  becomes a real gap only in a multi-tenant SaaS deployment.
+- Migration 0005 (`add member_stats.bonus_points_total`) — round-trip
+  + signed-value tests in `packages/db/tests/test_migration_0005.py`.
+
+### Behaviour change worth knowing
+
+The F-S001 fix slightly changes negative-adjustment semantics:
+
+  - **Before**: parent deducts 100 from a 10-point member → displayed
+    total drops to 0; the "extra" 90 points of deduction are
+    discarded forever. Future chore points immediately raise the
+    displayed total again.
+  - **After**: same immediate display (still 0), but
+    `bonus_points_total = -90` persists. The next 90 chore points the
+    kid earns are absorbed by the deficit before the displayed total
+    starts rising again.
+
+This matches a real-world penalty semantic ("you owe 90 points"
+actually means something) rather than the per-call clamp of the
+original implementation. If the strict-clamp semantic is preferred,
+a one-line clamp in `adjust_member_points` will restore it.
+
+### Tests
+
+- **+8 net new tests**, total goes from 509 → ~517 (the architecture-
+  test parameterization shifts a bit with the new files):
+  - `packages/db/tests/test_migration_0005.py` — 5 round-trip +
+    signed-value cases.
+  - `family_chores/tests/test_rollover.py` — 2 regression tests
+    (positive bonus survives, negative bonus carries as persistent
+    penalty across multiple rollovers).
+  - `family_chores/tests/test_ha_bridge.py` — 1 regression test
+    pinning `today_progress_pct` against a monkeypatched
+    `utcnow` + Pacific tz.
+- `./scripts/lint.sh` exits 0 across every workspace.
+
 ## [0.3.0] — 2026-04-25
 
 ### Added
