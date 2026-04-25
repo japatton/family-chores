@@ -85,18 +85,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests
 
-- 153 net new tests across the workspace. Total runs from 364 → 517+.
-  Breakdown:
-  - `packages/core` — starter library validation (26) + name
-    normalization (19)
-  - `packages/db` — migration 0004 round-trip + constraint
-    enforcement (15)
-  - `packages/api` services — seeder integration tests live in
-    `family_chores/tests/test_seeding.py` (12)
-  - `family_chores/tests` — suggestions API (24) + chores POST
-    extension (8) + HA-sync defensive (3)
+- **+145 tests** across the workspace, total goes from 364 → 509.
+  Breakdown by suite:
+  - `packages/core/tests` — starter library validation (26) +
+    `normalize_chore_name` (19) = +45 → 102 total
+  - `packages/db/tests` — migration 0004 round-trip + constraint
+    enforcement (15) = +15 → 52 total
+  - `family_chores/tests` — seeder integration (12) + suggestions
+    HTTP (24) + chores POST extension (8) + HA-sync defensive (3)
+    = +47 → 194 total
   - `family_chores/frontend` — BrowseSuggestionsPanel (9) +
-    ManageSuggestionsView (10) + useFirstRunBadge (5)
+    ManageSuggestionsView (10) + useFirstRunBadge (5) = +24 → 50 total
+  - `tests/` (architecture) — parameterized dep-arrow + packages-clean
+    checks pick up the new files = +14 → 95 total
+  All green via `./scripts/lint.sh` (ruff + mypy + pytest + eslint +
+  tsc + vitest across every workspace).
 
 ## [0.2.4] — 2026-04-24
 
