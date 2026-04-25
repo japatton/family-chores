@@ -131,6 +131,18 @@ class Chore(Base):
     )
     # Tenant scope (step 8). See `Member.household_id`.
     household_id: Mapped[str | None] = mapped_column(String(36))
+    # Chore-templates feature (DECISIONS §13). `template_id` records the
+    # template the chore was spawned from, if any — informational only.
+    # `ON DELETE SET NULL` so deleting a template doesn't cascade to its
+    # spawned chores. `ephemeral=True` means "this chore did NOT save
+    # itself as a suggestion" — currently informational, retained for a
+    # future "save this chore as a suggestion" retrofit action.
+    template_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("chore_template.id", ondelete="SET NULL"),
+        index=True,
+    )
+    ephemeral: Mapped[bool] = mapped_column(nullable=False, default=False)
 
     __table_args__ = (CheckConstraint("points >= 0", name="ck_chores_points_nonneg"),)
 
@@ -253,13 +265,123 @@ class AppConfig(Base):
     household_id: Mapped[str | None] = mapped_column(String(36))
 
 
+class ChoreTemplate(Base):
+    """Reusable blueprint for creating chores. See DECISIONS §13.
+
+    Templates and chores are independent — editing a template does NOT
+    modify any chore that was spawned from it, and editing a chore does
+    NOT modify its source template. The chore↔template split is invisible
+    to the parent UI (which talks about "suggestions"); this class is
+    only ever named `chore_template` in code.
+
+    `source='starter'` rows come from the bundled library at
+    `packages/core/.../data/starter_library.json`. `source='custom'` rows
+    are parent-created via the API. Starter rows can be soft-deleted
+    via `household_starter_suppression`; custom rows are hard-deleted.
+
+    SQLite-specific dedup gotcha: the `(household_id, name_normalized)`
+    and `(household_id, starter_key)` unique constraints DO NOT fire
+    when `household_id IS NULL` (SQLite treats NULL as distinct in
+    UNIQUE per the SQL standard). In single-tenant addon mode every
+    row has `household_id=NULL`, so dedup is enforced at the
+    application layer (seeder SELECTs first; API router returns 409
+    on conflict) rather than by the constraint. The constraint
+    becomes load-bearing in multi-tenant SaaS where `household_id` is
+    non-null.
+    """
+
+    __tablename__ = "chore_template"
+
+    # UUID-style string PK (vs the integer PKs elsewhere in this file)
+    # so the seeder can assign deterministic IDs and so future SaaS
+    # cross-system references aren't tied to a per-DB autoincrement.
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    # Tenant scope. NULL in single-tenant addon mode (matches the rest of
+    # the schema; see Member.household_id and DECISIONS §11 step 8).
+    household_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    # Populated by the service layer from `normalize_chore_name(name)`
+    # (packages/core/.../naming.py). Never editable directly via API —
+    # recomputed on every name update.
+    name_normalized: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    icon: Mapped[str | None] = mapped_column(String(64))
+    category: Mapped[str | None] = mapped_column(String(32), index=True)
+    age_min: Mapped[int | None] = mapped_column()
+    age_max: Mapped[int | None] = mapped_column()
+    points_suggested: Mapped[int] = mapped_column(nullable=False, default=1)
+    default_recurrence_type: Mapped[RecurrenceType] = mapped_column(
+        _recurrence_type_col(), nullable=False
+    )
+    default_recurrence_config: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
+    description: Mapped[str | None] = mapped_column(Text)
+    # 'starter' or 'custom'. Plain string column with a CHECK constraint
+    # rather than SQLEnum — keeps adding values a pure code change with
+    # no migration (same rationale as RecurrenceType, see file header).
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="custom")
+    # Set only for source='starter' rows. Combined with `household_id` in
+    # the (household_id, starter_key) unique constraint so the seeder can
+    # detect "already seeded" via SELECT and the suppression table can
+    # remember "deliberately deleted" across upgrade runs.
+    starter_key: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utcnow, onupdate=utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "household_id", "name_normalized", name="uq_template_household_name"
+        ),
+        UniqueConstraint(
+            "household_id", "starter_key", name="uq_template_household_starter_key"
+        ),
+        Index("ix_template_household_category", "household_id", "category"),
+        CheckConstraint("points_suggested >= 0", name="ck_template_points_nonneg"),
+        CheckConstraint("source IN ('starter', 'custom')", name="ck_template_source_enum"),
+    )
+
+
+class HouseholdStarterSuppression(Base):
+    """Records starter templates a parent has deleted.
+
+    Without this, the seeder would re-create deleted starter templates
+    on every addon startup (since seeding runs unconditionally — see
+    DECISIONS §13 §4.2). When a parent deletes a starter template, the
+    starter row is hard-deleted from `chore_template` and an entry is
+    inserted here so the next seeding pass skips that key.
+
+    The "Reset starter suggestions" API endpoint clears these rows for a
+    household and re-runs the seeder, restoring everything the parent
+    had deleted. Documented in DOCS.md as an escape hatch.
+
+    Composite PK on (household_id, starter_key). SQLite allows NULL in
+    composite PK columns and treats NULLs as distinct, so single-tenant
+    mode (all rows have `household_id=NULL`) cannot rely on the PK to
+    prevent double-suppression — the seeder/API does an existence check
+    before inserting. The composite PK is still the right shape for
+    multi-tenant SaaS where `household_id` is non-null.
+    """
+
+    __tablename__ = "household_starter_suppression"
+
+    household_id: Mapped[str | None] = mapped_column(String(36), primary_key=True)
+    starter_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    suppressed_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utcnow
+    )
+
+
 __all__ = [
     "ActivityLog",
     "AppConfig",
     "Chore",
     "ChoreAssignment",
     "ChoreInstance",
+    "ChoreTemplate",
     "DisplayMode",
+    "HouseholdStarterSuppression",
     "InstanceState",
     "Member",
     "MemberStats",
