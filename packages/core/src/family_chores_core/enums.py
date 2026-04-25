@@ -41,3 +41,27 @@ class InstanceState(str, enum.Enum):
     DONE = "done"
     SKIPPED = "skipped"
     MISSED = "missed"
+
+
+class ChoreCategory(str, enum.Enum):
+    """Canonical category set for chores and chore templates.
+
+    Added in DECISIONS §13 alongside the chore-suggestions feature. Used to
+    group templates in the Browse Suggestions panel and to validate the
+    bundled starter library at load time. Extending this enum is a pure
+    code change with no migration (categories are stored as plain strings
+    on `chore_template.category`, see `RecurrenceType` for the same
+    `native_enum=False` rationale).
+    """
+
+    BEDROOM = "bedroom"
+    BATHROOM = "bathroom"
+    KITCHEN = "kitchen"
+    LAUNDRY = "laundry"
+    PET_CARE = "pet_care"
+    OUTDOOR = "outdoor"
+    PERSONAL_CARE = "personal_care"
+    SCHOOLWORK = "schoolwork"
+    TIDYING = "tidying"
+    MEALS = "meals"
+    OTHER = "other"
