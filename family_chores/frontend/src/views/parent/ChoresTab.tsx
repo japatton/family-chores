@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { APIError } from '../../api/client'
 import {
   useChores,
@@ -51,6 +51,21 @@ export function ChoresTab() {
   // fires when the panel is opened.
   const [panelOpen, setPanelOpen] = useState(false)
   const suggestions = useSuggestions(undefined, { enabled: panelOpen })
+
+  // Save-as-suggestion checkbox (DECISIONS §13 §6.1) — default checked.
+  // The flag flows through to the chore POST body; the backend silently
+  // dedups against existing same-name templates, returning
+  // template_created=true only when a brand-new one was added alongside.
+  const [saveAsSuggestion, setSaveAsSuggestion] = useState(true)
+  // One-shot confirmation surfaced when the POST flag actually produced
+  // a new suggestion. Cleared after 4 seconds so the form doesn't carry
+  // stale messaging into the next chore the parent adds.
+  const [savedMessage, setSavedMessage] = useState<string | null>(null)
+  useEffect(() => {
+    if (savedMessage === null) return
+    const t = window.setTimeout(() => setSavedMessage(null), 4000)
+    return () => window.clearTimeout(t)
+  }, [savedMessage])
 
   if (chores.isLoading || members.isLoading) {
     return <p className="text-brand-700">Loading…</p>
@@ -115,9 +130,11 @@ export function ChoresTab() {
     const body: ChoreCreate = {
       ...draft,
       recurrence_config: buildRecurrenceConfig(),
+      save_as_suggestion: saveAsSuggestion,
     }
+    const choreName = body.name
     create.mutate(body, {
-      onSuccess: () => {
+      onSuccess: (result) => {
         setDraft({
           name: '',
           points: 5,
@@ -127,6 +144,14 @@ export function ChoresTab() {
           active: true,
         })
         setSpecificDays([])
+        setSaveAsSuggestion(true)
+        if (result.template_created) {
+          setSavedMessage(
+            `Saved "${choreName}" as a suggestion for next time.`,
+          )
+        } else {
+          setSavedMessage(null)
+        }
       },
       onError: (e) => {
         if (e instanceof APIError) setError(e.detail)
@@ -374,14 +399,34 @@ export function ChoresTab() {
             {error}
           </div>
         )}
-        <button
-          type="button"
-          onClick={submit}
-          disabled={create.isPending}
-          className="min-h-touch px-6 rounded-2xl bg-brand-600 text-white font-black text-fluid-base disabled:opacity-50"
-        >
-          {create.isPending ? 'Saving…' : 'Add chore'}
-        </button>
+        {savedMessage && (
+          <div
+            role="status"
+            className="text-emerald-700 text-fluid-sm font-semibold"
+          >
+            {savedMessage}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between gap-3 flex-wrap pt-1 border-t border-brand-50">
+          <label className="flex items-center gap-2 text-fluid-sm text-brand-700">
+            <input
+              type="checkbox"
+              checked={saveAsSuggestion}
+              onChange={(e) => setSaveAsSuggestion(e.target.checked)}
+              className="h-5 w-5 rounded border-brand-200 accent-brand-600"
+            />
+            <span>💾 Save as a suggestion for later</span>
+          </label>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={create.isPending}
+            className="min-h-touch px-6 rounded-2xl bg-brand-600 text-white font-black text-fluid-base disabled:opacity-50"
+          >
+            {create.isPending ? 'Saving…' : 'Add chore'}
+          </button>
+        </div>
       </div>
     </div>
   )
