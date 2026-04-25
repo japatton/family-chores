@@ -33,7 +33,15 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from family_chores_api.errors import DomainError
-from family_chores_api.routers import admin, auth, chores, instances, members, ws
+from family_chores_api.routers import (
+    admin,
+    auth,
+    chores,
+    instances,
+    members,
+    suggestions,
+    ws,
+)
 
 log = logging.getLogger(__name__)
 
@@ -158,6 +166,7 @@ def create_app(
     app.include_router(chores.router)
     app.include_router(instances.router)
     app.include_router(admin.router)
+    app.include_router(suggestions.router)
     app.include_router(ws.router)
 
     return app
