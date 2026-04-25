@@ -155,9 +155,11 @@ def _build_lifespan(opts: Options):  # type: ignore[no-untyped-def]
             log.exception("startup catch-up rollover failed; continuing")
             # Truncate so a giant traceback's first-line representation
             # doesn't blow up /api/info responses. The full traceback is
-            # in the addon log via log.exception above.
-            summary = f"{type(exc).__name__}: {exc}"
-            app.state.rollover_warning = summary[:500]
+            # in the addon log via log.exception above. Local name kept
+            # distinct from the try-block's `summary` (RolloverSummary)
+            # to keep mypy --strict happy.
+            warning_text = f"{type(exc).__name__}: {exc}"
+            app.state.rollover_warning = warning_text[:500]
 
         # Startup reconcile — converges HA todo state with SQLite after any
         # downtime. Best-effort: a network blip doesn't block the app from
