@@ -18,6 +18,12 @@ import type {
 } from '../../api/types'
 import { BrowseSuggestionsPanel } from '../../components/BrowseSuggestionsPanel'
 import { ManageSuggestionsView } from '../../components/ManageSuggestionsView'
+import { useFirstRunBadge } from '../../hooks/useFirstRunBadge'
+
+// Per-device localStorage key for the "✨ New" badge on Browse Suggestions
+// (DECISIONS §13 §6.2). app_config-backed persistence is mentioned in the
+// spec but deferred to v2 — see `useFirstRunBadge` for the rationale.
+const SUGGESTIONS_BADGE_KEY = 'fc.suggestionsBadgeSeen'
 
 const RECURRENCE_OPTIONS: { value: RecurrenceType; label: string }[] = [
   { value: 'daily', label: 'Every day' },
@@ -68,6 +74,7 @@ export function ChoresTab() {
   const updateSuggestion = useUpdateSuggestion()
   const deleteSuggestion = useDeleteSuggestion()
   const resetSuggestions = useResetSuggestions()
+  const [showBadge, dismissBadge] = useFirstRunBadge(SUGGESTIONS_BADGE_KEY)
 
   // Save-as-suggestion checkbox (DECISIONS §13 §6.1) — default checked.
   // The flag flows through to the chore POST body; the backend silently
@@ -222,14 +229,30 @@ export function ChoresTab() {
           <div className="text-fluid-base font-black text-brand-900">Add a chore</div>
           <button
             type="button"
-            onClick={() =>
+            onClick={() => {
               setPanelMode((m) => (m === 'closed' ? 'browse' : 'closed'))
-            }
+              // Discoverability badge is one-shot — dismiss as soon as
+              // the parent acknowledges the affordance, regardless of
+              // whether they kept the panel open or immediately closed
+              // it. See DECISIONS §13 §1.3.
+              if (showBadge) dismissBadge()
+            }}
             aria-expanded={panelOpen}
             aria-controls="browse-suggestions-region"
-            className="min-h-touch px-4 rounded-2xl font-bold text-fluid-sm bg-brand-50 text-brand-700 border border-brand-100"
+            className="min-h-touch px-4 rounded-2xl font-bold text-fluid-sm bg-brand-50 text-brand-700 border border-brand-100 inline-flex items-center gap-2"
           >
-            💡 {panelOpen ? 'Hide suggestions' : 'Browse suggestions'}
+            <span>
+              💡 {panelOpen ? 'Hide suggestions' : 'Browse suggestions'}
+            </span>
+            {showBadge && !panelOpen && (
+              <span
+                data-testid="suggestions-new-badge"
+                className="rounded-full bg-amber-200 text-amber-900 text-fluid-xs font-bold px-2 py-0.5"
+                aria-label="new feature"
+              >
+                ✨ New
+              </span>
+            )}
           </button>
         </div>
         {panelOpen && (
