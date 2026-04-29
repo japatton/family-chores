@@ -12,8 +12,18 @@ from family_chores_api.routers import (
     chores,
     instances,
     members,
+    rewards,
     suggestions,
     ws,
 )
 
-__all__ = ["admin", "auth", "chores", "instances", "members", "suggestions", "ws"]
+__all__ = [
+    "admin",
+    "auth",
+    "chores",
+    "instances",
+    "members",
+    "rewards",
+    "suggestions",
+    "ws",
+]

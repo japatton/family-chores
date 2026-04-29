@@ -9,7 +9,12 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from family_chores_db.models import DisplayMode, InstanceState, RecurrenceType
+from family_chores_db.models import (
+    DisplayMode,
+    InstanceState,
+    RecurrenceType,
+    RedemptionState,
+)
 
 _VALID_ISO_WEEKDAYS = {1, 2, 3, 4, 5, 6, 7}
 
@@ -419,6 +424,73 @@ class SuggestionResetResult(BaseModel):
     suppressions_cleared: int
     seeded: int
     library_version: int
+
+
+# ─── rewards + redemptions ────────────────────────────────────────────────
+
+
+class RewardRead(BaseModel):
+    id: str
+    name: str
+    description: str | None
+    cost_points: int
+    icon: str | None
+    active: bool
+    max_per_week: int | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RewardCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    description: str | None = Field(None, max_length=2048)
+    cost_points: int = Field(..., gt=0, le=1_000_000)
+    icon: str | None = Field(None, max_length=64)
+    active: bool = True
+    max_per_week: int | None = Field(None, gt=0, le=100)
+
+
+class RewardUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=120)
+    description: str | None = Field(None, max_length=2048)
+    cost_points: int | None = Field(None, gt=0, le=1_000_000)
+    icon: str | None = Field(None, max_length=64)
+    active: bool | None = None
+    max_per_week: int | None = Field(None, gt=0, le=100)
+
+
+class RedemptionRead(BaseModel):
+    id: str
+    reward_id: str
+    member_id: int
+    state: RedemptionState
+    cost_points_at_redeem: int
+    reward_name_at_redeem: str
+    requested_at: datetime
+    actor_requested: str | None
+    approved_at: datetime | None
+    approved_by: str | None
+    denied_at: datetime | None
+    denied_by: str | None
+    denied_reason: str | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RedemptionCreate(BaseModel):
+    """Body for `POST /api/members/{slug}/redemptions` (kid-facing).
+
+    The reward_id selects which reward; the member is resolved from
+    the URL path.
+    """
+
+    reward_id: str = Field(..., min_length=1, max_length=36)
+
+
+class RedemptionDenyRequest(BaseModel):
+    reason: str | None = Field(None, max_length=256)
 
 
 # ─── activity log ─────────────────────────────────────────────────────────

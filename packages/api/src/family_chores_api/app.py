@@ -39,6 +39,7 @@ from family_chores_api.routers import (
     chores,
     instances,
     members,
+    rewards,
     suggestions,
     ws,
 )
@@ -167,6 +168,9 @@ def create_app(
     app.include_router(instances.router)
     app.include_router(admin.router)
     app.include_router(suggestions.router)
+    app.include_router(rewards.rewards_router)
+    app.include_router(rewards.redemptions_router)
+    app.include_router(rewards.member_redemptions_router)
     app.include_router(ws.router)
 
     return app
