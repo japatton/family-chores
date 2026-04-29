@@ -65,3 +65,21 @@ class ChoreCategory(str, enum.Enum):
     TIDYING = "tidying"
     MEALS = "meals"
     OTHER = "other"
+
+
+class RedemptionState(str, enum.Enum):
+    """State machine for a parent-approved reward redemption.
+
+    Lives in `core.enums` with the other domain enums. The state machine
+    is `pending_approval → approved | denied`. Deduction of points
+    happens at request time (insufficient balance is a 4xx); refund
+    happens on `denied` via `bonus_points_total += cost`. Approved
+    redemptions don't move points (they were already deducted at
+    request time).
+
+    See the rewards-feature commits on feat-reward-catalogue.
+    """
+
+    PENDING_APPROVAL = "pending_approval"
+    APPROVED = "approved"
+    DENIED = "denied"
