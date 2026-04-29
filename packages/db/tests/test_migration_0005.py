@@ -105,8 +105,8 @@ def test_bonus_points_total_accepts_negative_values(tmp_path):
 
 def test_downgrade_removes_bonus_points_total(tmp_path):
     db = tmp_path / "test.db"
-    command.upgrade(_alembic_config(db), "head")
-    command.downgrade(_alembic_config(db), "-1")
+    command.upgrade(_alembic_config(db), "0005_add_bonus_points")
+    command.downgrade(_alembic_config(db), "0004_add_chore_templates")
     with sqlite3.connect(db) as conn:
         cols = _columns(conn, "member_stats")
         assert "bonus_points_total" not in cols
@@ -117,9 +117,12 @@ def test_downgrade_removes_bonus_points_total(tmp_path):
 
 def test_upgrade_downgrade_upgrade_is_idempotent(tmp_path):
     db = tmp_path / "test.db"
-    command.upgrade(_alembic_config(db), "head")
-    command.downgrade(_alembic_config(db), "-1")
-    command.upgrade(_alembic_config(db), "head")
+    # Pin the test to 0005 specifically — `head` advances as new migrations
+    # land (0006 added pin_hash on members), so `-1` would no longer roll
+    # back the bonus_points_total change without a migration-target.
+    command.upgrade(_alembic_config(db), "0005_add_bonus_points")
+    command.downgrade(_alembic_config(db), "0004_add_chore_templates")
+    command.upgrade(_alembic_config(db), "0005_add_bonus_points")
     with sqlite3.connect(db) as conn:
         cols = _columns(conn, "member_stats")
         assert "bonus_points_total" in cols
