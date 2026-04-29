@@ -37,6 +37,19 @@ export interface Member {
   requires_approval: boolean
   ha_todo_entity_id: string | null
   stats: MemberStats
+  // Per-kid PIN (DECISIONS §17). Boolean only — the hash is server-side only.
+  pin_set: boolean
+}
+
+export interface MemberPinStatus {
+  member_id: number
+  slug: string
+  pin_set: boolean
+}
+
+export interface MemberPinVerifyResponse {
+  member_id: number
+  verified_until: number // unix seconds
 }
 
 export interface MemberCreate {

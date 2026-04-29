@@ -2,12 +2,15 @@ import { useState } from 'react'
 import { APIError } from '../../api/client'
 import {
   useAdjustPoints,
+  useClearMemberPin,
   useCreateMember,
   useDeleteMember,
   useMembers,
+  useSetMemberPin,
   useUpdateMember,
 } from '../../api/hooks'
 import type { Member, MemberCreate } from '../../api/types'
+import { useKidPinStore } from '../../store/kidPin'
 
 const DEFAULT_COLORS = [
   '#6366f1',
@@ -175,9 +178,15 @@ export function MembersTab() {
 function MemberRow({ member, onDelete }: { member: Member; onDelete: () => void }) {
   const update = useUpdateMember(member.slug)
   const adjust = useAdjustPoints()
+  const setPin = useSetMemberPin(member.slug)
+  const clearPin = useClearMemberPin(member.slug)
+  const clearKidPinUnlock = useKidPinStore((s) => s.clear)
   const [adjusting, setAdjusting] = useState(false)
   const [adjustDelta, setAdjustDelta] = useState('')
   const [adjustReason, setAdjustReason] = useState('')
+  const [pinning, setPinning] = useState(false)
+  const [pinValue, setPinValue] = useState('')
+  const [pinError, setPinError] = useState<string | null>(null)
 
   return (
     <li
@@ -226,12 +235,113 @@ function MemberRow({ member, onDelete }: { member: Member; onDelete: () => void 
         </button>
         <button
           type="button"
+          onClick={() => {
+            setPinError(null)
+            setPinValue('')
+            setPinning((v) => !v)
+          }}
+          className={
+            'min-h-touch px-4 rounded-2xl font-bold text-fluid-sm ' +
+            (member.pin_set
+              ? 'bg-emerald-100 text-emerald-800'
+              : 'bg-brand-50 text-brand-700')
+          }
+        >
+          {member.pin_set ? '🔒 PIN set' : '🔓 No PIN'}
+        </button>
+        <button
+          type="button"
           onClick={onDelete}
           className="min-h-touch px-4 rounded-2xl font-bold text-fluid-sm bg-rose-50 text-rose-700"
         >
           Delete
         </button>
       </div>
+      {pinning && (
+        <div className="rounded-xl bg-brand-50/70 p-3 space-y-2">
+          <div className="text-fluid-xs font-bold text-brand-700">
+            {member.pin_set
+              ? `${member.name} has a PIN. Set a new one to overwrite, or clear it.`
+              : `Set a 4-digit PIN. ${member.name}'s view will require it before showing chores.`}
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-fluid-xs font-bold text-brand-700">
+                4-digit PIN
+              </span>
+              <input
+                type="password"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={8}
+                minLength={4}
+                value={pinValue}
+                onChange={(e) =>
+                  setPinValue(e.target.value.replace(/\D/g, '').slice(0, 8))
+                }
+                className="rounded-xl border border-brand-100 px-3 py-2 w-32 text-fluid-base"
+                placeholder="••••"
+              />
+            </label>
+            <button
+              type="button"
+              disabled={pinValue.length < 4 || setPin.isPending}
+              onClick={() => {
+                setPinError(null)
+                setPin.mutate(pinValue, {
+                  onSuccess: () => {
+                    // Force re-prompt on the kid view if it's currently
+                    // unlocked — a PIN change shouldn't preserve the
+                    // old unlock.
+                    clearKidPinUnlock(member.id)
+                    setPinning(false)
+                    setPinValue('')
+                  },
+                  onError: (e) => {
+                    setPinError(
+                      e instanceof APIError ? e.detail : 'Failed to set PIN.',
+                    )
+                  },
+                })
+              }}
+              className="min-h-touch px-5 rounded-2xl bg-brand-600 text-white font-black disabled:opacity-50"
+            >
+              {member.pin_set ? 'Update PIN' : 'Set PIN'}
+            </button>
+            {member.pin_set && (
+              <button
+                type="button"
+                disabled={clearPin.isPending}
+                onClick={() => {
+                  setPinError(null)
+                  clearPin.mutate(undefined, {
+                    onSuccess: () => {
+                      clearKidPinUnlock(member.id)
+                      setPinning(false)
+                      setPinValue('')
+                    },
+                    onError: (e) => {
+                      setPinError(
+                        e instanceof APIError
+                          ? e.detail
+                          : 'Failed to clear PIN.',
+                      )
+                    },
+                  })
+                }}
+                className="min-h-touch px-5 rounded-2xl bg-rose-50 text-rose-700 font-black disabled:opacity-50"
+              >
+                Clear
+              </button>
+            )}
+            {pinError && (
+              <div role="alert" className="text-rose-600 text-fluid-sm font-semibold w-full">
+                {pinError}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {adjusting && (
         <div className="flex items-end gap-3 flex-wrap">
           <label className="flex flex-col gap-1">
