@@ -34,7 +34,7 @@ from family_chores_api.deps import (
     get_ws_manager,
     require_parent,
 )
-from family_chores_api.errors import ConflictError, NotFoundError
+from family_chores_api.errors import NotFoundError
 from family_chores_api.events import WSManager
 from family_chores_api.schemas import (
     RedemptionCreate,
