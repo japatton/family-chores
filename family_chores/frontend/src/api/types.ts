@@ -252,3 +252,61 @@ export interface InfoResponse {
   // null when rollover succeeded (the common case).
   rollover_warning: string | null
 }
+
+// ─── rewards + redemptions ────────────────────────────────────────────────
+
+export type RedemptionState = 'pending_approval' | 'approved' | 'denied'
+
+export interface Reward {
+  id: string
+  name: string
+  description: string | null
+  cost_points: number
+  icon: string | null
+  active: boolean
+  max_per_week: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface RewardCreate {
+  name: string
+  description?: string | null
+  cost_points: number
+  icon?: string | null
+  active?: boolean
+  max_per_week?: number | null
+}
+
+export interface RewardUpdate {
+  name?: string
+  description?: string | null
+  cost_points?: number
+  icon?: string | null
+  active?: boolean
+  max_per_week?: number | null
+}
+
+export interface Redemption {
+  id: string
+  reward_id: string
+  member_id: number
+  state: RedemptionState
+  cost_points_at_redeem: number
+  reward_name_at_redeem: string
+  requested_at: string
+  actor_requested: string | null
+  approved_at: string | null
+  approved_by: string | null
+  denied_at: string | null
+  denied_by: string | null
+  denied_reason: string | null
+}
+
+export interface RedemptionCreate {
+  reward_id: string
+}
+
+export interface RedemptionDenyRequest {
+  reason?: string | null
+}

@@ -120,7 +120,7 @@ export function MemberView() {
       className="mx-auto max-w-5xl"
       style={{ ['--accent' as string]: m.color }}
     >
-      <div className="flex items-center gap-4 mb-8">
+      <div className="flex items-center gap-4 mb-8 flex-wrap">
         <Link
           to="/"
           className="min-h-touch min-w-touch px-5 rounded-2xl font-bold bg-brand-50 text-brand-700 grid place-items-center"
@@ -139,6 +139,12 @@ export function MemberView() {
             </div>
           </div>
         </div>
+        <Link
+          to={`/member/${slug}/rewards`}
+          className="min-h-touch px-5 rounded-2xl font-bold text-fluid-sm bg-brand-50 text-brand-700 grid place-items-center"
+        >
+          🎁 Rewards
+        </Link>
       </div>
 
       {instances.length === 0 ? (

@@ -6,6 +6,7 @@ import { ApprovalQueue } from './parent/ApprovalQueue'
 import { ChoresTab } from './parent/ChoresTab'
 import { MembersTab } from './parent/MembersTab'
 import { ParentGate } from './parent/ParentGate'
+import { RewardsTab } from './parent/RewardsTab'
 
 export function ParentView() {
   const clearToken = useParentStore((s) => s.clear)
@@ -26,6 +27,7 @@ export function ParentView() {
 
         <nav className="flex gap-2 flex-wrap">
           <ParentTabLink to="approvals">Approvals</ParentTabLink>
+          <ParentTabLink to="rewards">Rewards</ParentTabLink>
           <ParentTabLink to="members">Members</ParentTabLink>
           <ParentTabLink to="chores">Chores</ParentTabLink>
           <ParentTabLink to="activity">Activity</ParentTabLink>
@@ -33,6 +35,7 @@ export function ParentView() {
 
         <Routes>
           <Route path="approvals" element={<ApprovalQueue />} />
+          <Route path="rewards" element={<RewardsTab />} />
           <Route path="members" element={<MembersTab />} />
           <Route path="chores" element={<ChoresTab />} />
           <Route path="activity" element={<ActivityTab />} />
