@@ -99,6 +99,7 @@ h3,
   .animate-sparkle,
   .animate-float-up,
   .animate-pop-in,
+  .animate-celebrate-bounce,
   [style*='fc-float-'] {
     animation: none !important;
   }

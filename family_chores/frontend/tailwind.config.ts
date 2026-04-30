@@ -53,11 +53,20 @@ export default {
       animation: {
         'fade-in': 'fade-in 200ms ease-out',
         'pulse-slow': 'pulse 4s cubic-bezier(0.4,0,0.6,1) infinite',
+        // F-U003 (UX sweep): bounce on the CelebrationAllDone emoji.
+        // Defined here (not as an inline `style` attribute) so the
+        // `prefers-reduced-motion` block in globals.css can disable it
+        // alongside the rest of the decorative animations.
+        'celebrate-bounce': 'celebrate-bounce 2.4s ease-in-out infinite',
       },
       keyframes: {
         'fade-in': {
           '0%': { opacity: '0', transform: 'translateY(4px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'celebrate-bounce': {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-12px)' },
         },
       },
     },
