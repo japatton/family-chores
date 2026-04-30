@@ -44,6 +44,19 @@ function invalidateForEvent(qc: QueryClient, ev: WireEvent): void {
     case 'pin_cleared':
       qc.invalidateQueries({ queryKey: ['whoami'] })
       return
+    case 'reward_created':
+    case 'reward_updated':
+    case 'reward_deleted':
+      qc.invalidateQueries({ queryKey: ['rewards'] })
+      return
+    case 'redemption_requested':
+    case 'redemption_approved':
+    case 'redemption_denied':
+      qc.invalidateQueries({ queryKey: ['redemptions'] })
+      qc.invalidateQueries({ queryKey: ['member'] })
+      qc.invalidateQueries({ queryKey: ['members'] })
+      qc.invalidateQueries({ queryKey: ['today'] })
+      return
     case 'stats_rebuilt':
       qc.invalidateQueries()
       return

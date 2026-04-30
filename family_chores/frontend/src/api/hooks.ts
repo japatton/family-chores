@@ -16,6 +16,12 @@ import type {
   MemberPinVerifyResponse,
   MemberStats,
   MemberUpdate,
+  Redemption,
+  RedemptionCreate,
+  RedemptionState,
+  Reward,
+  RewardCreate,
+  RewardUpdate,
   Suggestion,
   SuggestionCreate,
   SuggestionFilters,
@@ -363,6 +369,150 @@ export function useDeleteSuggestion() {
         parentToken: token,
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['suggestions'] }),
+  })
+}
+
+// ─── rewards + redemptions ────────────────────────────────────────────────
+
+export function useRewards(opts: { active?: boolean } = {}) {
+  return useQuery({
+    queryKey: ['rewards', opts.active ?? null],
+    queryFn: () => {
+      const q =
+        opts.active === undefined
+          ? ''
+          : `?active=${opts.active ? 'true' : 'false'}`
+      return apiFetch<Reward[]>(`/rewards${q}`)
+    },
+    staleTime: 15_000,
+  })
+}
+
+export function useCreateReward() {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: (body: RewardCreate) =>
+      apiFetch<Reward>('/rewards', {
+        method: 'POST',
+        parentToken: token,
+        json: body,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['rewards'] }),
+  })
+}
+
+export function useUpdateReward() {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: RewardUpdate }) =>
+      apiFetch<Reward>(`/rewards/${id}`, {
+        method: 'PATCH',
+        parentToken: token,
+        json: body,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['rewards'] }),
+  })
+}
+
+export function useDeleteReward() {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<void>(`/rewards/${id}`, {
+        method: 'DELETE',
+        parentToken: token,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['rewards'] }),
+  })
+}
+
+export function useMemberRedemptions(slug: string | undefined) {
+  return useQuery({
+    queryKey: ['member', slug, 'redemptions'],
+    queryFn: () => apiFetch<Redemption[]>(`/members/${slug}/redemptions`),
+    enabled: !!slug,
+    staleTime: 5_000,
+  })
+}
+
+/**
+ * Kid-facing — no parent JWT required. Insufficient balance + cap
+ * errors come back as APIError(409); the calling component surfaces
+ * the .detail string.
+ */
+export function useCreateRedemption(slug: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: RedemptionCreate) =>
+      apiFetch<Redemption>(`/members/${slug}/redemptions`, {
+        method: 'POST',
+        json: body,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['member', slug] })
+      qc.invalidateQueries({ queryKey: ['member', slug, 'redemptions'] })
+      qc.invalidateQueries({ queryKey: ['today'] })
+      qc.invalidateQueries({ queryKey: ['redemptions'] })
+    },
+  })
+}
+
+export function useRedemptions(
+  opts: { state?: RedemptionState; memberId?: number } = {},
+) {
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useQuery({
+    queryKey: ['redemptions', opts.state ?? null, opts.memberId ?? null],
+    queryFn: () => {
+      const params = new URLSearchParams()
+      if (opts.state) params.set('state', opts.state)
+      if (opts.memberId) params.set('member_id', String(opts.memberId))
+      const qs = params.toString()
+      return apiFetch<Redemption[]>(
+        `/redemptions${qs ? `?${qs}` : ''}`,
+        { parentToken: token },
+      )
+    },
+    enabled: !!token,
+    staleTime: 5_000,
+  })
+}
+
+export function useApproveRedemption() {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<Redemption>(`/redemptions/${id}/approve`, {
+        method: 'POST',
+        parentToken: token,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['redemptions'] })
+      qc.invalidateQueries({ queryKey: ['member'] })
+    },
+  })
+}
+
+export function useDenyRedemption() {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      apiFetch<Redemption>(`/redemptions/${id}/deny`, {
+        method: 'POST',
+        parentToken: token,
+        json: { reason },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['redemptions'] })
+      qc.invalidateQueries({ queryKey: ['members'] })
+      qc.invalidateQueries({ queryKey: ['member'] })
+      qc.invalidateQueries({ queryKey: ['today'] })
+    },
   })
 }
 

@@ -40,12 +40,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 # core ↔ db arrow stays one-way (see DECISIONS §11 step 2). Re-exported here
 # so existing `from family_chores.db.models import RecurrenceType` callsites
 # keep working without a sweep.
-from family_chores_core.enums import InstanceState, RecurrenceType
+from family_chores_core.enums import InstanceState, RecurrenceType, RedemptionState
 
 from family_chores_core.time import utcnow
 from family_chores_db.base import Base
 
-__all__ = ["InstanceState", "RecurrenceType"]  # explicit re-export
+__all__ = ["InstanceState", "RecurrenceType", "RedemptionState"]  # explicit re-export
 
 # ─── enums ───────────────────────────────────────────────────────────────
 
@@ -385,6 +385,102 @@ class HouseholdStarterSuppression(Base):
     )
 
 
+class Reward(Base):
+    """Parent-defined catalogue row.
+
+    Soft-deleted via `active=False` rather than hard-deleted — historical
+    redemption rows hold a `RESTRICT` foreign key to `reward.id`, so a
+    hard delete with active redemptions would fail at the DB level. The
+    soft path lets the parent retire a reward without losing the
+    audit history of who redeemed it for what cost when.
+    """
+
+    __tablename__ = "reward"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    household_id: Mapped[str | None] = mapped_column(String(36))
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    cost_points: Mapped[int] = mapped_column(nullable=False)
+    icon: Mapped[str | None] = mapped_column(String(64))
+    active: Mapped[bool] = mapped_column(nullable=False, default=True)
+    # Optional weekly cap on per-member redemptions of this reward. NULL =
+    # no cap. Enforced at request time by the service layer (counts the
+    # member's redemptions of this reward in the current week_anchor
+    # window, including denied ones).
+    max_per_week: Mapped[int | None] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utcnow, onupdate=utcnow
+    )
+
+    __table_args__ = (
+        CheckConstraint("cost_points > 0", name="ck_reward_cost_positive"),
+        CheckConstraint(
+            "max_per_week IS NULL OR max_per_week > 0",
+            name="ck_reward_max_per_week_positive",
+        ),
+        Index("ix_reward_household_active", "household_id", "active"),
+    )
+
+
+class Redemption(Base):
+    """A kid-initiated request to redeem a reward.
+
+    State machine: `pending_approval → approved | denied`. Points are
+    deducted at request time (insufficient balance is a 4xx, points
+    don't move). Approved = no points change; denied = refund via
+    `MemberStats.bonus_points_total += cost`.
+
+    The `*_at_redeem` snapshot fields capture what the reward looked
+    like at request time so a parent renaming/repricing the reward
+    later doesn't change historical records.
+    """
+
+    __tablename__ = "redemption"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    household_id: Mapped[str | None] = mapped_column(String(36))
+    reward_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("reward.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    member_id: Mapped[int] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), nullable=False
+    )
+    state: Mapped[RedemptionState] = mapped_column(
+        SQLEnum(
+            RedemptionState,
+            name="redemption_state",
+            native_enum=False,
+            length=32,
+        ),
+        nullable=False,
+    )
+    cost_points_at_redeem: Mapped[int] = mapped_column(nullable=False)
+    reward_name_at_redeem: Mapped[str] = mapped_column(String(120), nullable=False)
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utcnow
+    )
+    actor_requested: Mapped[str | None] = mapped_column(String(128))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    approved_by: Mapped[str | None] = mapped_column(String(128))
+    denied_at: Mapped[datetime | None] = mapped_column(DateTime)
+    denied_by: Mapped[str | None] = mapped_column(String(128))
+    denied_reason: Mapped[str | None] = mapped_column(String(256))
+
+    __table_args__ = (
+        CheckConstraint(
+            "cost_points_at_redeem > 0", name="ck_redemption_cost_positive"
+        ),
+        Index("ix_redemption_household_state", "household_id", "state"),
+        Index("ix_redemption_member", "member_id", "requested_at"),
+    )
+
+
 __all__ = [
     "ActivityLog",
     "AppConfig",
@@ -398,4 +494,7 @@ __all__ = [
     "Member",
     "MemberStats",
     "RecurrenceType",
+    "Redemption",
+    "RedemptionState",
+    "Reward",
 ]
