@@ -44,8 +44,51 @@ class MemberRead(BaseModel):
     requires_approval: bool
     ha_todo_entity_id: str | None
     stats: MemberStatsRead
+    # Per-kid PIN (DECISIONS §17). Boolean only — the hash itself is
+    # never exposed via the API. `false` = no PIN set; `true` = the
+    # member's view should prompt for a PIN before showing chores.
+    pin_set: bool = False
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# Per-kid PIN endpoints (DECISIONS §17). Same shape as the parent-PIN
+# request schemas but on a different surface — the parent PIN gates
+# admin actions; the kid PIN gates a specific member's view. Both are
+# soft locks per the threat model.
+
+
+class MemberPinSetRequest(BaseModel):
+    pin: str = Field(..., min_length=4, max_length=8, pattern=r"^\d+$")
+
+
+class MemberPinVerifyRequest(BaseModel):
+    pin: str = Field(..., min_length=4, max_length=8, pattern=r"^\d+$")
+
+
+class MemberPinVerifyResponse(BaseModel):
+    """Returned on successful kid-PIN verification.
+
+    The kid PIN doesn't mint a JWT (unlike the parent PIN) — verification
+    is per-request and the frontend tracks which member's view has been
+    "unlocked" in client-side state. The verified-until timestamp lets
+    the SPA compute when to require re-verification (default 1 hour;
+    short enough that a kid leaving the tablet logged in doesn't expose
+    the panel to a sibling for the rest of the day).
+    """
+
+    member_id: int
+    verified_until: int  # unix seconds
+
+
+class MemberPinStatus(BaseModel):
+    """Response shape for `/api/members/{slug}/pin` (GET) — discoverability
+    helper so the SPA can avoid POSTing `verify` against members with no
+    PIN set."""
+
+    member_id: int
+    slug: str
+    pin_set: bool
 
 
 class MemberCreate(BaseModel):

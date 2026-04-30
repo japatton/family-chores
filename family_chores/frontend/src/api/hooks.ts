@@ -13,6 +13,7 @@ import type {
   Instance,
   Member,
   MemberCreate,
+  MemberPinVerifyResponse,
   MemberStats,
   MemberUpdate,
   Suggestion,
@@ -198,6 +199,56 @@ export function useUpdateMember(slug: string) {
       qc.invalidateQueries({ queryKey: ['member', slug] })
       qc.invalidateQueries({ queryKey: ['today'] })
     },
+  })
+}
+
+// ─── per-kid PIN (DECISIONS §17) ──────────────────────────────────────────
+
+export function useSetMemberPin(slug: string) {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: (pin: string) =>
+      apiFetch<Member>(`/members/${slug}/pin/set`, {
+        method: 'POST',
+        parentToken: token,
+        json: { pin },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['members'] })
+      qc.invalidateQueries({ queryKey: ['member', slug] })
+    },
+  })
+}
+
+export function useClearMemberPin(slug: string) {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<Member>(`/members/${slug}/pin/clear`, {
+        method: 'POST',
+        parentToken: token,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['members'] })
+      qc.invalidateQueries({ queryKey: ['member', slug] })
+    },
+  })
+}
+
+/**
+ * Kid-facing PIN verify — does NOT require parent auth. The verified_until
+ * timestamp goes into the kidPinStore so the SPA can show the PIN gate
+ * again when the unlock window expires.
+ */
+export function useVerifyMemberPin(slug: string) {
+  return useMutation({
+    mutationFn: (pin: string) =>
+      apiFetch<MemberPinVerifyResponse>(`/members/${slug}/pin/verify`, {
+        method: 'POST',
+        json: { pin },
+      }),
   })
 }
 

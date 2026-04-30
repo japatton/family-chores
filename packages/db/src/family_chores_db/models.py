@@ -89,6 +89,11 @@ class Member(Base):
     # unset the bridge skips todo sync for this member but still publishes
     # sensors and events. See INSTALL.md "HA Todo Setup".
     ha_todo_entity_id: Mapped[str | None] = mapped_column(String(128))
+    # Per-member soft-lock PIN hash (DECISIONS §17). Same threat model as
+    # the parent PIN — convenience gate, not a security boundary. NULL =
+    # no per-member PIN set. Argon2-hashed via the same helpers as the
+    # parent PIN.
+    pin_hash: Mapped[str | None] = mapped_column(String(256))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utcnow, onupdate=utcnow

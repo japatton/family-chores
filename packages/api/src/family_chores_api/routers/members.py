@@ -1,6 +1,8 @@
-"""Family-member CRUD."""
+"""Family-member CRUD + per-kid PIN endpoints."""
 
 from __future__ import annotations
+
+import time
 
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
@@ -16,7 +18,12 @@ from family_chores_api.deps import (
     get_ws_manager,
     require_parent,
 )
-from family_chores_api.errors import ConflictError, NotFoundError
+from family_chores_api.errors import (
+    ConflictError,
+    NotFoundError,
+    PinInvalidError,
+    PinNotSetError,
+)
 from family_chores_api.events import (
     EVT_MEMBER_CREATED,
     EVT_MEMBER_DELETED,
@@ -25,15 +32,25 @@ from family_chores_api.events import (
 )
 from family_chores_api.schemas import (
     MemberCreate,
+    MemberPinSetRequest,
+    MemberPinStatus,
+    MemberPinVerifyRequest,
+    MemberPinVerifyResponse,
     MemberRead,
     MemberStatsRead,
     MemberUpdate,
 )
-from family_chores_api.security import ParentClaim
+from family_chores_api.security import ParentClaim, hash_pin, verify_pin
 from family_chores_db.models import ActivityLog, Member, MemberStats
 from family_chores_db.scoped import scoped
 
 router = APIRouter(prefix="/api/members", tags=["members"])
+
+# Per-kid PIN unlock window. Short enough that an unattended tablet
+# doesn't expose the member view all day; long enough that a kid
+# doesn't have to re-PIN every time they tap a chore. Mirrored in
+# the response payload so the SPA computes its own re-verify time.
+_KID_PIN_WINDOW_SECONDS = 60 * 60  # 1 hour
 
 
 def _to_read(member: Member, stats: MemberStats | None) -> MemberRead:
@@ -54,6 +71,7 @@ def _to_read(member: Member, stats: MemberStats | None) -> MemberRead:
         requires_approval=member.requires_approval,
         ha_todo_entity_id=member.ha_todo_entity_id,
         stats=stats_payload,
+        pin_set=member.pin_hash is not None,
     )
 
 
@@ -209,3 +227,104 @@ async def delete_member(
     await session.delete(member)
     await session.commit()
     await ws.broadcast({"type": EVT_MEMBER_DELETED, "member_id": member_id})
+
+
+# ─── per-kid PIN (DECISIONS §17) ──────────────────────────────────────────
+
+
+@router.get("/{slug}/pin", response_model=MemberPinStatus)
+async def get_member_pin_status(
+    slug: str,
+    session: AsyncSession = Depends(get_session),
+    household_id: str | None = Depends(get_current_household_id),
+) -> MemberPinStatus:
+    """Whether this member has a PIN set. No auth required — the answer
+    is also surfaced on `MemberRead.pin_set`, but this endpoint exists so
+    the SPA can poll without needing the full member payload."""
+    member = await _load_by_slug(session, slug, household_id)
+    return MemberPinStatus(
+        member_id=member.id, slug=member.slug, pin_set=member.pin_hash is not None
+    )
+
+
+@router.post("/{slug}/pin/set", response_model=MemberRead, status_code=200)
+async def set_member_pin(
+    slug: str,
+    body: MemberPinSetRequest,
+    session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_remote_user),
+    ws: WSManager = Depends(get_ws_manager),
+    household_id: str | None = Depends(get_current_household_id),
+    _parent: ParentClaim = Depends(require_parent),
+) -> MemberRead:
+    """Parent sets (or rotates) the per-kid PIN. Always overwrites — no
+    `current_pin` proof-of-knowledge step like the parent PIN, because a
+    parent who forgot their kid's PIN would otherwise be unable to reset
+    it without the parent-PIN admin path. Parent already has elevated
+    auth via `require_parent`."""
+    member = await _load_by_slug(session, slug, household_id)
+    member.pin_hash = hash_pin(body.pin)
+    session.add(
+        ActivityLog(
+            actor=user,
+            action="member_pin_set",
+            payload={"id": member.id, "slug": member.slug},
+            household_id=household_id,
+        )
+    )
+    await session.commit()
+    await ws.broadcast({"type": EVT_MEMBER_UPDATED, "member_id": member.id})
+    return _to_read(member, member.stats)
+
+
+@router.post("/{slug}/pin/verify", response_model=MemberPinVerifyResponse)
+async def verify_member_pin(
+    slug: str,
+    body: MemberPinVerifyRequest,
+    session: AsyncSession = Depends(get_session),
+    household_id: str | None = Depends(get_current_household_id),
+) -> MemberPinVerifyResponse:
+    """Kid-facing — no parent JWT required. Returns the verified-until
+    timestamp on success (the SPA tracks per-member unlock state in
+    client-side storage; the server doesn't issue a token)."""
+    member = await _load_by_slug(session, slug, household_id)
+    if member.pin_hash is None:
+        raise PinNotSetError(f"member {slug!r} has no PIN set")
+    if not verify_pin(body.pin, member.pin_hash):
+        raise PinInvalidError("incorrect PIN")
+    return MemberPinVerifyResponse(
+        member_id=member.id,
+        verified_until=int(time.time()) + _KID_PIN_WINDOW_SECONDS,
+    )
+
+
+@router.post(
+    "/{slug}/pin/clear",
+    response_model=MemberRead,
+    status_code=200,
+)
+async def clear_member_pin(
+    slug: str,
+    session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_remote_user),
+    ws: WSManager = Depends(get_ws_manager),
+    household_id: str | None = Depends(get_current_household_id),
+    _parent: ParentClaim = Depends(require_parent),
+) -> MemberRead:
+    """Parent removes the per-kid PIN. Returns the updated member."""
+    member = await _load_by_slug(session, slug, household_id)
+    if member.pin_hash is None:
+        # Idempotent — clearing an already-cleared PIN is fine.
+        return _to_read(member, member.stats)
+    member.pin_hash = None
+    session.add(
+        ActivityLog(
+            actor=user,
+            action="member_pin_cleared",
+            payload={"id": member.id, "slug": member.slug},
+            household_id=household_id,
+        )
+    )
+    await session.commit()
+    await ws.broadcast({"type": EVT_MEMBER_UPDATED, "member_id": member.id})
+    return _to_read(member, member.stats)
