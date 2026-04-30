@@ -5,6 +5,79 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-04-30
+
+Minor release: two new user-visible features (per-kid PIN + reward
+catalogue) plus a small batch of kid-UX polish from a children's-
+software UX review.
+
+### Added
+
+- **Per-kid PIN soft lock** (PR #11). Optional 4-digit PIN per family
+  member. When set, the member's view (chores + rewards) prompts for
+  the PIN before showing anything; correct entry unlocks for 1 hour
+  (server-set window), after which the gate re-appears. Same threat
+  model as the parent PIN — convenience gate for the wall-mounted-
+  tablet case (stops siblings from tapping each other's chores), not
+  a security boundary. New endpoints under `/api/members/{slug}/pin/`
+  for set / verify (kid-facing, no JWT) / clear, plus `pin_set: bool`
+  on the existing member shape. Migration 0006 adds
+  `members.pin_hash` (nullable, Argon2-hashed via the same helpers
+  as the parent PIN).
+- **Redeemable reward catalogue** (PR #12). Parents define a catalog
+  in Parent → Rewards (name, point cost, optional description, optional
+  weekly cap). Kids reach the catalog from a "🎁 Rewards" button on
+  their member view. Tapping a reward shows an explicit point-math
+  confirmation ("You have ⭐ N · This costs −⭐ X · You'll have ⭐ Y")
+  before committing. Pending → Approved | Denied state machine; deduct
+  happens at request time, refund on deny via the F-S001
+  `bonus_points_total` path so rejected redemptions don't lose points.
+  Three new HA events (`family_chores_redemption_{requested,approved,denied}`)
+  for automation hooks. Migration 0007 adds two tables (`reward`,
+  `redemption`) with snapshot fields so historical records survive
+  reward renames/repricing.
+
+### Changed
+
+- **Kid-facing copy + motion polish** (PR #13, F-U001–F-U005 from
+  the UX sweep):
+  - TodayView greeting drops "Up late?" / "Almost bedtime!" — bedtime
+    enforcement is a parent's decision, not the UI's. Late-night and
+    pre-dawn slots warmly say "Hi there 🌙" instead.
+  - MemberTile progress flips from raw "X of Y done · Z to go" math to
+    motivational thresholds ("Halfway through ✨", "Almost there!",
+    "Let's get started — N chores today").
+  - CelebrationAllDone bounce now respects `prefers-reduced-motion`
+    (was inline-styled and bypassed the global media-query block).
+  - Missed-state ChoreCard drops the strikethrough + relabels to
+    "Past — catch it tomorrow 🌅" — less punitive for kids reading
+    their own row.
+  - CelebrationAllDone uses the kid's name in the hero ("You did it,
+    {name}!") and rotates the subhead through 5 warm phrasings keyed
+    by day-of-year.
+
+### Migration
+
+- Migration 0006 (`add member_pin_hash`) and 0007 (`add rewards +
+  redemption tables`) both run on first boot of v0.4.0. Existing
+  rows pick up safe defaults (NULL pin_hash, no rewards table
+  changes for non-kids); no manual backfill required.
+
+### HA events
+
+- `family_chores_redemption_requested` — fires when a kid taps redeem.
+  Payload: `{redemption_id, reward_id, reward_name, member_id, cost_points}`.
+- `family_chores_redemption_approved` — fires when a parent approves.
+- `family_chores_redemption_denied` — same payload + `cost_points_refunded` + `reason`.
+
+Wire from HA automations the same way as `family_chores_completed`.
+
+### Tests
+
+- **+59 net new tests**: 5 migration 0006 + 17 per-kid-PIN API + 5
+  kidPinStore (frontend) + 9 migration 0007 + 23 rewards/redemption
+  API. All workspaces still green via `./scripts/lint.sh`.
+
 ## [0.3.1] — 2026-04-25
 
 Patch release addressing all six substantive findings from the
