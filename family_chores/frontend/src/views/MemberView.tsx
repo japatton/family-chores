@@ -159,6 +159,7 @@ export function MemberView() {
           accent={m.color}
           pointsToday={pointsToday}
           streak={m.stats.streak}
+          name={m.name}
         />
       ) : (
         <div className="grid gap-4 sm:gap-6">

@@ -11,7 +11,25 @@ export function MemberTile({ member }: MemberTileProps) {
     ['done', 'done_unapproved', 'skipped'].includes(i.state),
   ).length
   const total = member.instances.length
-  const pending = total - done
+
+  // F-U002 (UX sweep): ratio-based progress framing. The old phrasing
+  // "X of Y done · Z to go" was math-correct but read as a wall of work
+  // for high-N kid mornings. Switching to motivational copy at thresholds
+  // that match how kids respond — "halfway", "almost there", a fresh
+  // start invitation when nothing's done yet.
+  const ratio = total === 0 ? 0 : done / total
+  const progressPhrase =
+    total === 0
+      ? 'No chores today 🎉'
+      : ratio === 1
+        ? 'All done — way to go! 🎉'
+        : ratio >= 0.8
+          ? `Almost there! ${total - done} left`
+          : ratio >= 0.5
+            ? 'Halfway through ✨'
+            : ratio > 0
+              ? `${done} done — keep going!`
+              : `Let's get started — ${total} chore${total === 1 ? '' : 's'} today`
 
   return (
     <Link
@@ -23,9 +41,7 @@ export function MemberTile({ member }: MemberTileProps) {
         <div className="min-w-0">
           <div className="text-fluid-xl font-black truncate">{member.name}</div>
           <div className="mt-2 text-fluid-sm opacity-90 font-semibold">
-            {total === 0
-              ? 'No chores today 🎉'
-              : `${done} of ${total} done · ${pending} to go`}
+            {progressPhrase}
           </div>
         </div>
         {member.avatar ? (

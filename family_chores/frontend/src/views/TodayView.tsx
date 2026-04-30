@@ -4,14 +4,21 @@ import { MemberTile } from '../components/MemberTile'
 
 // Greeting words that rotate by hour-of-day. Simple — we don't i18n in
 // v1, and "Hey family!" works for the kid audience regardless.
+//
+// F-U001 (UX sweep): the late-night and pre-dawn slots used to read
+// "Up late?" and "Almost bedtime!" — both subtly judgmental. The
+// addon doesn't enforce bedtime, so the strings carried social weight
+// without operational backing. Bookend hours now greet the same
+// neutral warmth as the in-day slots; bedtime enforcement is the
+// parent's job, not the UI's.
 function greeting(now = new Date()): string {
   const h = now.getHours()
-  if (h < 5) return 'Up late?'
+  if (h < 5) return 'Hi there 🌙'
   if (h < 11) return 'Good morning!'
   if (h < 14) return 'Happy midday!'
   if (h < 18) return 'Hey family!'
   if (h < 22) return 'Good evening!'
-  return 'Almost bedtime!'
+  return 'Hi there 🌙'
 }
 
 function formattedDate(iso: string | undefined): string {

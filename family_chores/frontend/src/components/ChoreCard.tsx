@@ -7,12 +7,17 @@ interface ChoreCardProps {
   disabled?: boolean
 }
 
+// F-U004 (UX sweep): the missed state used to apply `line-through` and
+// label the row "— Missed", which read as punitive — kids who saw
+// their own row struck-through felt judged by the tablet. Dropped the
+// strikethrough and softened the label. The faded background still
+// visually de-prioritises past rows against today's actionable ones.
 const STATE_LABEL: Record<TodayInstance['state'], string> = {
   pending: 'Tap when done',
   done_unapproved: '⏳ Waiting for parent',
   done: '✓ Done',
   skipped: '↷ Skipped',
-  missed: '— Missed',
+  missed: 'Past — catch it tomorrow 🌅',
 }
 
 export function ChoreCard({ instance, onTap, disabled }: ChoreCardProps) {
@@ -29,7 +34,6 @@ export function ChoreCard({ instance, onTap, disabled }: ChoreCardProps) {
         finished
           ? 'bg-white/80 text-brand-700/70 opacity-80'
           : 'bg-white text-brand-900 active:scale-[0.99]',
-        instance.state === 'missed' && 'line-through',
       )}
       style={{ borderLeft: '8px solid var(--accent)' }}
     >
