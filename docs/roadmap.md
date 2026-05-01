@@ -8,12 +8,28 @@ New feature requests get triaged against this document. If you're thinking of op
 
 The last few notable releases. For the full list, see [`family_chores/CHANGELOG.md`](../family_chores/CHANGELOG.md).
 
-- **Next release (unreleased)** — chore suggestions. Bundled library of
+- **v0.5.0 (2026-05-01)** — calendar integration. Family Chores now
+  reads HA `calendar.*` entities and surfaces today's events on each
+  member's tile (with prep chips like 🥾 cleats, 💧 water bottle
+  auto-extracted from event descriptions), shows a "Today's events"
+  panel inside the kid view, and adds a Parent → Calendar tab with a
+  monthly grid + per-member and household-shared mapping settings.
+  Under the hood, the work introduced two provider Protocols
+  (`CalendarProvider`, `TodoProvider`) that decouple the addon from
+  HA-specific code, laying the groundwork for a non-HA standalone
+  deployment without rewriting the bridge. See [DECISIONS §14](../DECISIONS.md)
+  and [`docs/calendar.md`](calendar.md).
+- **v0.4.0 (2026-04-26)** — per-kid PIN profile lock + redeemable
+  reward catalogue + UX polish sweep. Kids unlock their own view
+  with a 4-digit PIN (soft lock, not a security boundary); parents
+  define a points-redeemable rewards list with an approve/deny
+  queue. Plus the F-U001–F-U005 UX fixes from a children's-software
+  expert sweep.
+- **v0.3.1 (2026-04-25)** — chore suggestions. Bundled library of
   46 age-appropriate chore templates seed into the Add Chore form's
   new "💡 Browse suggestions" panel; tap a template to pre-fill every
   field. New chores default to saving themselves back into the library
-  for next time. See [DECISIONS §13](../DECISIONS.md) and
-  `family_chores/CHANGELOG.md` `[Unreleased]` for the full shape.
+  for next time. See [DECISIONS §13](../DECISIONS.md).
 - **v0.2.4 (2026-04-24)** — clean re-cut after v0.2.2 + v0.2.3 tag
   mishaps. Manifest version field wasn't bumped at v0.2.2/v0.2.3 tag
   time so HA Supervisor never offered them; v0.2.4 ships the polish
@@ -27,8 +43,8 @@ The last few notable releases. For the full list, see [`family_chores/CHANGELOG.
 These might land in a 0.3.x or 0.4.x cycle. No promises, no ordering.
 
 - **HACS custom-repository polish.** The Lovelace card already installs as a custom HACS repository (see [`lovelace-card/README.md`](../lovelace-card/README.md)). Tidying up the `info.md`, version pinning, and the HACS manifest so the install feels first-class is low-lift.
-- **Redeemable reward catalogue.** Points → real rewards. Parent defines a catalogue (`30 min extra screen time — 50 pts`, `ice-cream trip — 200 pts`), kid redeems from their member view, parent approves or denies. Architectural hook exists via the existing `points_adjust` pathway and activity log.
-- **Per-kid PIN / profile lock.** Optional per-member lock so a sibling can't mark a chore done on someone else's behalf. Same soft-lock pattern as the parent PIN — convenience feature, not a security boundary.
+- **Per-calendar color picker.** Today every event chip in the monthly grid shares the brand color. Letting parents pin a color per `calendar.*` entity (and surfacing it on the chip strip + day cards) would make the family-shared vs. per-member distinction visually obvious.
+- **HA entity-id autocomplete.** Today the Calendar settings is a type-and-add chip input. A "list available `calendar.*` entities from HA" dropdown would shave friction when the parent doesn't remember the entity id offhand.
 - **Voice / TTS convenience templates.** Events already fire on completion, approval, and streak milestones — you can wire Sonos, TTS, or any HA automation against them today. What's missing is a few copy-paste-ready automation blueprints in the add-on docs.
 - **Photo-proof of completion.** Upload a photo to demonstrate the chore was done. Pillow re-encoding is already in place for avatars; storage tier (blob in DB vs. HA media) is the open design question.
 
@@ -39,6 +55,7 @@ Bigger shapes that would meaningfully change the project. Not committed to, not 
 - **Blueprint library + example dashboards.** A curated set of HA blueprints (chore-streak-broken → light pulse, approval-pending → phone nudge) and a few example Lovelace dashboards that go beyond the single card.
 - **Export / import of chore catalogue.** YAML or JSON round-trip so families can share starter-pack chore lists.
 - **HACS default-list submission.** This is a submission process, not a code change, and involves meeting HACS's published criteria (code quality, maintenance cadence, documentation). Currently blocked on maintenance-cadence confidence; revisit after a few release cycles.
+- **Standalone (non-HA) deployment target.** Tier 2 of the calendar/todo decoupling roadmap (see [DECISIONS §14](../DECISIONS.md)). The provider Protocols introduced in v0.5.0 make this possible without rewriting the bridge — what's missing is a CalDAV / Google Calendar provider implementation and an `apps/standalone/` composition root. Open question: how heavy is the lift to get the addon's lifespan + auth shape working without HA Ingress?
 
 ## Explicitly out of scope
 
