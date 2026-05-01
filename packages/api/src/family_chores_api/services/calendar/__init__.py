@@ -18,10 +18,38 @@ Three pieces:
     invalidation backs the parent's explicit Refresh button on the
     monthly view.
 
-Composition + the public service surface (`get_events_for_today`,
-`get_events_for_range`) lands in subsequent commits as PR-A continues.
+  - `service.py` — composition. `get_events_for_window` orchestrates
+    cache + provider + prep parsing into the API-layer `CalendarEvent`
+    shape that routers serialise.
 """
 
+from family_chores_api.services.calendar.cache import CalendarCache
 from family_chores_api.services.calendar.prep import PrepItem, extract_prep_items
+from family_chores_api.services.calendar.provider import (
+    CalendarProvider,
+    CalendarProviderError,
+    CalendarProviderResult,
+    RawEvent,
+)
+from family_chores_api.services.calendar.service import (
+    CalendarEvent,
+    CalendarWindow,
+    get_events_for_window,
+    hide_past,
+    partition_by_member,
+)
 
-__all__ = ["PrepItem", "extract_prep_items"]
+__all__ = [
+    "CalendarCache",
+    "CalendarEvent",
+    "CalendarProvider",
+    "CalendarProviderError",
+    "CalendarProviderResult",
+    "CalendarWindow",
+    "PrepItem",
+    "RawEvent",
+    "extract_prep_items",
+    "get_events_for_window",
+    "hide_past",
+    "partition_by_member",
+]
