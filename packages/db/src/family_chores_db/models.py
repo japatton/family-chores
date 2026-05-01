@@ -28,6 +28,7 @@ from sqlalchemy import (
     Text,
     Time,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy import (
     Enum as SQLEnum,
@@ -94,6 +95,18 @@ class Member(Base):
     # no per-member PIN set. Argon2-hashed via the same helpers as the
     # parent PIN.
     pin_hash: Mapped[str | None] = mapped_column(String(256))
+    # Per-member calendar mapping (DECISIONS §14). List of HA `calendar.*`
+    # entity IDs the parent has assigned to this member. Empty list = no
+    # calendars mapped. Per-member privacy lives here — events on a
+    # parent's work calendar aren't mapped to any kid.
+    #
+    # `server_default` matters for the test_startup_recovery path which
+    # creates tables via `Base.metadata.create_all` (not via Alembic).
+    # The Python-side `default=list` only fires on ORM inserts; the
+    # server-side default catches raw SQL inserts that omit the column.
+    calendar_entity_ids: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list, server_default=text("'[]'")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utcnow, onupdate=utcnow
@@ -481,6 +494,39 @@ class Redemption(Base):
     )
 
 
+class HouseholdSettings(Base):
+    """Single-row-per-household configuration table (DECISIONS §14).
+
+    The existing `app_config` bag is key/value and used for runtime-
+    minted things (JWT secret, parent PIN hash). `household_settings`
+    is for parent-curated, structured household-level config that's
+    cleaner as named columns than as opaque JSON values in app_config.
+
+    First column: `shared_calendar_entity_ids` for the calendar
+    integration's family-shared mapping. Future additions land here
+    too (week-start-day moved here later, default member display
+    mode, etc.).
+
+    Single-tenant addon mode keeps `household_id = NULL`; the PK is
+    just that one column.
+    """
+
+    __tablename__ = "household_settings"
+
+    household_id: Mapped[str | None] = mapped_column(
+        String(36), primary_key=True
+    )
+    shared_calendar_entity_ids: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list, server_default=text("'[]'")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utcnow, onupdate=utcnow
+    )
+
+
 __all__ = [
     "ActivityLog",
     "AppConfig",
@@ -489,6 +535,7 @@ __all__ = [
     "ChoreInstance",
     "ChoreTemplate",
     "DisplayMode",
+    "HouseholdSettings",
     "HouseholdStarterSuppression",
     "InstanceState",
     "Member",
