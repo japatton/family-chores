@@ -11,7 +11,13 @@ from dataclasses import dataclass, field
 from datetime import date as date_type
 from typing import Any
 
-from family_chores_addon.ha.client import HAClientError, HAUnavailableError, TodoItem
+from family_chores_api.services.todo import TodoProviderError
+
+from family_chores_addon.ha.client import (
+    HAClientError,
+    HAUnavailableError,
+    TodoItem,
+)
 
 
 @dataclass
@@ -34,6 +40,10 @@ class FakeHAClient:
         self.calls: list[tuple[str, Any]] = []
         # Set `fail_next` to raise on the next call of a given method.
         self.fail_next: dict[str, Exception] = {}
+        # Generic service-call queue for `call_service` — used by the
+        # HACalendarProvider tests. Map of `(domain, service)` to a
+        # list of canned responses; each call pops the front.
+        self.service_responses: dict[tuple[str, str], list[Any]] = {}
 
     # ─── test helpers ─────────────────────────────────────────────────────
 
@@ -143,8 +153,104 @@ class FakeHAClient:
         if len(fake_list.items) == before:
             raise HAClientError(f"404: item not found: {item}")
 
+    # ─── TodoProvider Protocol shim (DECISIONS §14 Tier 1) ────────────────
+    #
+    # The reconciler now takes a `TodoProvider` rather than the HA client
+    # directly. To avoid wrapping every test call site in `HATodoProvider(fake)`,
+    # we expose `add_item` / `get_items` / `update_item` / `remove_item`
+    # as thin delegates to the existing `todo_*` methods. FakeHAClient
+    # therefore satisfies BOTH `HAClient` (structurally) AND `TodoProvider`
+    # — the same fake works for bridge tests and reconciler tests.
+    #
+    # `HAClientError` from the underlying todo_* method is wrapped as
+    # `TodoProviderError` to mirror what the production `HATodoProvider`
+    # does, so `except TodoProviderError` in the reconciler catches the
+    # injected failures from `fail_next`.
+
+    async def add_item(
+        self,
+        entity_id: str,
+        summary: str,
+        *,
+        due_date: date_type | None = None,
+        description: str | None = None,
+    ) -> None:
+        try:
+            await self.todo_add_item(
+                entity_id, summary, due_date=due_date, description=description
+            )
+        except HAClientError as exc:
+            raise TodoProviderError(str(exc)) from exc
+
+    async def get_items(self, entity_id: str) -> list[TodoItem]:
+        try:
+            return await self.todo_get_items(entity_id)
+        except HAClientError as exc:
+            raise TodoProviderError(str(exc)) from exc
+
+    async def update_item(
+        self,
+        entity_id: str,
+        item: str,
+        *,
+        rename: str | None = None,
+        status: str | None = None,
+        due_date: date_type | None = None,
+        description: str | None = None,
+    ) -> None:
+        try:
+            await self.todo_update_item(
+                entity_id,
+                item,
+                rename=rename,
+                status=status,
+                due_date=due_date,
+                description=description,
+            )
+        except HAClientError as exc:
+            raise TodoProviderError(str(exc)) from exc
+
+    async def remove_item(self, entity_id: str, item: str) -> None:
+        try:
+            await self.todo_remove_item(entity_id, item)
+        except HAClientError as exc:
+            raise TodoProviderError(str(exc)) from exc
+
+    async def call_service(
+        self,
+        domain: str,
+        service: str,
+        data: dict[str, Any],
+        *,
+        return_response: bool = False,
+    ) -> Any:
+        """Generic service-call shim. Returns the next queued response
+        from `service_responses[(domain, service)]`, or `None` if the
+        queue is empty (so a test that doesn't care about the body
+        doesn't have to set anything up).
+
+        `_maybe_fail` lookup uses `"call_service"` first, then
+        `f"call_service:{domain}.{service}"` for fine-grained failure
+        injection.
+        """
+        self._maybe_fail("call_service")
+        self._maybe_fail(f"call_service:{domain}.{service}")
+        self.calls.append(
+            ("call_service", (domain, service, data, return_response))
+        )
+        queue = self.service_responses.get((domain, service))
+        if queue:
+            return queue.pop(0)
+        return None
+
     async def aclose(self) -> None:
         self.calls.append(("aclose", None))
 
 
-__all__ = ["FakeHAClient", "FakeTodoList", "HAClientError", "HAUnavailableError"]
+__all__ = [
+    "FakeHAClient",
+    "FakeTodoList",
+    "HAClientError",
+    "HAUnavailableError",
+    "TodoProviderError",
+]

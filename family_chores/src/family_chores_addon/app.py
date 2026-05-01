@@ -26,6 +26,10 @@ from typing import cast
 from family_chores_api import WSManager
 from family_chores_api import create_app as create_api_app
 from family_chores_api.security import ensure_jwt_secret
+from family_chores_api.services.calendar import (
+    CalendarCache,
+    NoOpCalendarProvider,
+)
 from family_chores_api.services.rollover_service import run_rollover
 from family_chores_api.services.starter_seeding import seed_starter_library
 from family_chores_core.time import local_today
@@ -39,8 +43,10 @@ from family_chores_addon import __version__
 from family_chores_addon.auth import IngressAuthStrategy
 from family_chores_addon.config import Options, load_options
 from family_chores_addon.ha import HABridge, NoOpBridge, make_client_from_env
+from family_chores_addon.ha.calendar import HACalendarProvider
 from family_chores_addon.ha.client import HAClient, HAClientError
 from family_chores_addon.ha.reconcile import reconcile_once
+from family_chores_addon.ha.todo import HATodoProvider
 from family_chores_addon.scheduler import make_scheduler
 
 log = logging.getLogger(__name__)
@@ -120,9 +126,27 @@ def _build_lifespan(opts: Options):  # type: ignore[no-untyped-def]
         tz = await _resolve_effective_timezone(opts, ha_client)
         app.state.effective_timezone = tz
 
+        # Calendar wiring (DECISIONS §14). The cache is always present
+        # so routes can depend on it unconditionally; the provider is
+        # the HA-backed one if we have a client, else a NoOp that
+        # returns empty results — the kid view still renders, just
+        # with no events.
+        app.state.calendar_cache = CalendarCache()
+        if ha_client is None:
+            app.state.calendar_provider = NoOpCalendarProvider()
+        else:
+            app.state.calendar_provider = HACalendarProvider(ha_client)
+
         if ha_client is None:
             app.state.bridge = NoOpBridge()
+            app.state.todo_provider = None
         else:
+            # Tier 1 sweep (DECISIONS §14): build the TodoProvider once
+            # at startup and share it between the bridge and the
+            # reconciler. Both depend on the agnostic Protocol; the
+            # HA-specific wrapper lives in this single line.
+            todo_provider = HATodoProvider(ha_client)
+            app.state.todo_provider = todo_provider
             app.state.bridge = HABridge(
                 ha_client,
                 app.state.session_factory,
@@ -131,6 +155,7 @@ def _build_lifespan(opts: Options):  # type: ignore[no-untyped-def]
                 # local date rather than UTC. Same callable shape as the
                 # auth strategy's secret_provider.
                 timezone_provider=lambda: cast(str, app.state.effective_timezone),
+                todos=todo_provider,
             )
         await app.state.bridge.start()
 
@@ -161,13 +186,16 @@ def _build_lifespan(opts: Options):  # type: ignore[no-untyped-def]
             warning_text = f"{type(exc).__name__}: {exc}"
             app.state.rollover_warning = warning_text[:500]
 
-        # Startup reconcile — converges HA todo state with SQLite after any
-        # downtime. Best-effort: a network blip doesn't block the app from
-        # coming up; the 15-min periodic reconciler will retry.
-        if ha_client is not None:
+        # Startup reconcile — converges backend todo state with SQLite
+        # after any downtime. Best-effort: a network blip doesn't block
+        # the app from coming up; the 15-min periodic reconciler will
+        # retry. Skipped when there's no HA client (NoOpBridge path).
+        if ha_client is not None and app.state.todo_provider is not None:
             try:
                 rec = await reconcile_once(
-                    ha_client, app.state.session_factory, today=local_today(tz)
+                    app.state.todo_provider,
+                    app.state.session_factory,
+                    today=local_today(tz),
                 )
                 log.info(
                     "startup reconcile: members=%d created=%d updated=%d deleted=%d errors=%d",
@@ -187,7 +215,7 @@ def _build_lifespan(opts: Options):  # type: ignore[no-untyped-def]
                 tz=tz,
                 week_starts_on=opts.week_starts_on,
                 bridge=app.state.bridge,
-                ha_client=ha_client,
+                todos=app.state.todo_provider,
             )
             scheduler.start()
             app.state.scheduler = scheduler

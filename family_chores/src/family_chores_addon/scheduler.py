@@ -5,8 +5,11 @@ Two jobs:
     rollover pipeline (mark overdue, recompute stats, generate instances)
     and enqueues streak-milestone events into the HA bridge.
   - `ha_reconcile` — interval, every 15 min. Drives
-    `family_chores.ha.reconcile.reconcile_once` so HA todo state converges
-    with SQLite even when individual bridge calls dropped.
+    `family_chores.ha.reconcile.reconcile_once` so todo backend state
+    converges with SQLite even when individual bridge calls dropped.
+    Tier 1 sweep (DECISIONS §14): the reconciler now takes a
+    `TodoProvider`, not the raw HA client, so a future SaaS deployment
+    can run the same convergence logic against a different backend.
 """
 
 from __future__ import annotations
@@ -18,10 +21,10 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from family_chores_api.bridge import BridgeProtocol
 from family_chores_api.services.rollover_service import run_rollover
+from family_chores_api.services.todo import TodoProvider
 from family_chores_core.time import local_today
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from family_chores_addon.ha.client import HAClient
 from family_chores_addon.ha.reconcile import reconcile_once
 
 log = logging.getLogger(__name__)
@@ -39,7 +42,7 @@ def make_scheduler(
     tz: str,
     week_starts_on: str,
     bridge: BridgeProtocol | None = None,
-    ha_client: HAClient | None = None,
+    todos: TodoProvider | None = None,
 ) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone=tz)
 
@@ -72,14 +75,14 @@ def make_scheduler(
                 log.exception("midnight rollover failed")
 
     async def reconcile_job() -> None:
-        if ha_client is None or bridge is None:
-            log.debug("ha reconcile: no HA client, skipping")
+        if todos is None or bridge is None:
+            log.debug("todo reconcile: no provider, skipping")
             return
         today = local_today(tz)
         try:
-            result = await reconcile_once(ha_client, session_factory, today=today)
+            result = await reconcile_once(todos, session_factory, today=today)
             log.info(
-                "ha reconcile: members=%d created=%d updated=%d deleted=%d errors=%d",
+                "todo reconcile: members=%d created=%d updated=%d deleted=%d errors=%d",
                 result.members_processed,
                 result.items_created,
                 result.items_updated,
@@ -87,7 +90,7 @@ def make_scheduler(
                 len(result.errors),
             )
         except Exception:
-            log.exception("ha reconcile failed")
+            log.exception("todo reconcile failed")
 
     scheduler.add_job(
         midnight_job,

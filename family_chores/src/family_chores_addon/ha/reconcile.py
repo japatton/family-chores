@@ -1,21 +1,22 @@
-"""Reconciler — makes HA's todo state match ours.
+"""Reconciler — makes the todo backend's state match ours.
 
 Runs on a schedule (every 15 min) and at startup. Safety net against events
-the bridge dropped (HA down for a while, upgrade window, etc.).
+the bridge dropped (backend down for a while, upgrade window, etc.).
 
 Algorithm, per member with `ha_todo_entity_id` set:
 
-  1. Fetch HA's current items for that entity via `todo.get_items`.
+  1. Fetch the backend's current items for that entity via
+     `TodoProvider.get_items` (Tier 1 sweep — DECISIONS §14).
   2. Load our open-range instances (date >= today) and recent completed ones
      (date >= today - backfill days) so we don't delete a recently-completed
      item the user still wants to see on the list.
   3. Match by our `[FC#<id>]` prefix.
-     - In HA but not ours → delete (orphan).
-     - In ours but not HA → create; capture UID.
+     - In backend but not ours → delete (orphan).
+     - In ours but not backend → create; capture UID.
      - Both → if summary/status/due drift, update; always record UID.
 
 Missing chores / deleted instances are caught by step (a): the DB won't have
-the FC id anymore, so the HA item looks like an orphan.
+the FC id anymore, so the backend item looks like an orphan.
 """
 
 from __future__ import annotations
@@ -25,6 +26,11 @@ from dataclasses import dataclass, field
 from datetime import date as date_type
 from datetime import timedelta
 
+from family_chores_api.services.todo import (
+    TodoItem,
+    TodoProvider,
+    TodoProviderError,
+)
 from family_chores_db.models import ChoreInstance, Member
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -36,7 +42,6 @@ from family_chores_addon.ha.bridge import (
     fc_tag,
     todo_summary_for,
 )
-from family_chores_addon.ha.client import HAClient, HAClientError, TodoItem
 
 log = logging.getLogger(__name__)
 
@@ -81,12 +86,18 @@ def _needs_update(
 
 
 async def reconcile_once(
-    client: HAClient,
+    todos: TodoProvider,
     session_factory: async_sessionmaker[AsyncSession],
     *,
     today: date_type,
     backfill_days: int = RECONCILE_BACKFILL_DAYS,
 ) -> ReconcileResult:
+    """Tier 1 sweep (DECISIONS §14): now takes a `TodoProvider` rather
+    than the HA client directly, so the same reconciler logic runs
+    against any backend conforming to the Protocol (HA, Google Tasks,
+    a future SaaS in-app store, etc.). Existing callers wrap the
+    `HAClient` in `HATodoProvider`.
+    """
     result = ReconcileResult()
     async with session_factory() as session:
         members_res = await session.execute(
@@ -97,9 +108,9 @@ async def reconcile_once(
         for member in members:
             try:
                 await _reconcile_one_member(
-                    session, client, member, today=today, backfill_days=backfill_days, result=result
+                    session, todos, member, today=today, backfill_days=backfill_days, result=result
                 )
-            except HAClientError as exc:
+            except TodoProviderError as exc:
                 msg = f"member={member.slug} entity={member.ha_todo_entity_id}: {exc}"
                 log.warning("reconcile error: %s", msg)
                 result.errors.append(msg)
@@ -110,7 +121,7 @@ async def reconcile_once(
 
 async def _reconcile_one_member(
     session: AsyncSession,
-    client: HAClient,
+    todos: TodoProvider,
     member: Member,
     *,
     today: date_type,
@@ -120,7 +131,7 @@ async def _reconcile_one_member(
     entity_id = member.ha_todo_entity_id
     assert entity_id is not None  # caller filters
 
-    ha_items = await client.todo_get_items(entity_id)
+    backend_items = await todos.get_items(entity_id)
 
     start = today - timedelta(days=backfill_days)
     inst_res = await session.execute(
@@ -132,8 +143,8 @@ async def _reconcile_one_member(
     our_instances = list(inst_res.scalars().all())
     our_by_id: dict[int, ChoreInstance] = {i.id: i for i in our_instances}
 
-    # First pass: walk HA items.
-    for item in ha_items:
+    # First pass: walk backend items.
+    for item in backend_items:
         fc_id = _parse_fc_id(item.summary)
         if fc_id is None:
             # Not one of ours — leave it alone.
@@ -142,9 +153,9 @@ async def _reconcile_one_member(
         if our_inst is None:
             # Orphan — our side has no such instance any more.
             try:
-                await client.todo_remove_item(entity_id, item.uid)
+                await todos.remove_item(entity_id, item.uid)
                 result.items_deleted += 1
-            except HAClientError as exc:
+            except TodoProviderError as exc:
                 log.warning("failed to delete orphan %s: %s", item.uid, exc)
                 result.errors.append(f"delete {item.uid}: {exc}")
             continue
@@ -158,7 +169,7 @@ async def _reconcile_one_member(
         expected_due = our_inst.date.isoformat()
         if _needs_update(item, expected_summary, expected_status, expected_due):
             try:
-                await client.todo_update_item(
+                await todos.update_item(
                     entity_id,
                     item.uid,
                     rename=expected_summary,
@@ -166,17 +177,18 @@ async def _reconcile_one_member(
                     due_date=our_inst.date,
                 )
                 result.items_updated += 1
-            except HAClientError as exc:
+            except TodoProviderError as exc:
                 log.warning("failed to update %s: %s", item.uid, exc)
                 result.errors.append(f"update {item.uid}: {exc}")
 
-    # Second pass: anything still in our_by_id is missing from HA — create it.
+    # Second pass: anything still in our_by_id is missing from the
+    # backend — create it.
     for inst in our_by_id.values():
         summary = todo_summary_for(inst.id, inst.chore.name)
         try:
-            await client.todo_add_item(entity_id, summary, due_date=inst.date)
+            await todos.add_item(entity_id, summary, due_date=inst.date)
             result.items_created += 1
-        except HAClientError as exc:
+        except TodoProviderError as exc:
             log.warning("failed to add item for instance %s: %s", inst.id, exc)
             result.errors.append(f"add #{inst.id}: {exc}")
             continue
@@ -184,8 +196,8 @@ async def _reconcile_one_member(
     # Third pass: sweep UIDs for any we just added.
     if our_by_id:
         try:
-            fresh = await client.todo_get_items(entity_id)
-        except HAClientError as exc:
+            fresh = await todos.get_items(entity_id)
+        except TodoProviderError as exc:
             log.warning("uid-sweep get_items failed: %s", exc)
             return
         by_tag: dict[str, TodoItem] = {
@@ -201,10 +213,10 @@ async def _reconcile_one_member(
                 expected_status = _INSTANCE_STATE_TO_TODO_STATUS[inst.state]
                 if expected_status != TODO_STATUS_NEEDS_ACTION:
                     try:
-                        await client.todo_update_item(
+                        await todos.update_item(
                             entity_id, fresh_item.uid, status=expected_status
                         )
-                    except HAClientError as exc:
+                    except TodoProviderError as exc:
                         log.info("post-create status flip failed: %s", exc)
 
 

@@ -61,3 +61,14 @@ class AuthRequiredError(DomainError):
 class ForbiddenError(DomainError):
     status_code = 403
     error_code = "forbidden"
+
+
+class ValidationError(DomainError):
+    """Raised by services / routers for semantic validation failures
+    that Pydantic body / query validation didn't catch (e.g. an
+    inverted date window). Distinct from FastAPI's
+    `RequestValidationError` so the error envelope is consistent with
+    other domain errors."""
+
+    status_code = 400
+    error_code = "validation_error"

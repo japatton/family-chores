@@ -32,6 +32,7 @@ from datetime import date as date_type
 from typing import Any
 
 from family_chores_api.bridge import BridgeProtocol
+from family_chores_api.services.todo import TodoProvider, TodoProviderError
 from family_chores_core.time import local_today, utcnow
 from family_chores_db.models import (
     Chore,
@@ -49,6 +50,7 @@ from family_chores_addon.ha.client import (
     HAUnauthorizedError,
     HAUnavailableError,
 )
+from family_chores_addon.ha.todo import HATodoProvider
 
 log = logging.getLogger(__name__)
 
@@ -134,8 +136,16 @@ class HABridge(BridgeProtocol):
         *,
         debounce_seconds: float = _DEFAULT_DEBOUNCE,
         timezone_provider: Callable[[], str] | None = None,
+        todos: TodoProvider | None = None,
     ) -> None:
         self._client = client
+        # Tier 1 sweep (DECISIONS §14): the bridge no longer calls
+        # `client.todo_*` directly — it goes through the TodoProvider
+        # Protocol so a future SaaS deployment (or a swapped backend
+        # like Google Tasks) can drop in without touching bridge logic.
+        # Default to the HA-backed provider so existing addon callers
+        # don't need to change.
+        self._todos: TodoProvider = todos if todos is not None else HATodoProvider(client)
         self._session_factory = session_factory
         self._debounce = debounce_seconds
         # `timezone_provider` is the same callable shape as
@@ -382,10 +392,12 @@ class HABridge(BridgeProtocol):
         due: date_type | None = inst.date
 
         if inst.ha_todo_uid:
-            # Update by UID. If HA lost the item (e.g. user deleted it in
-            # the UI), the update will 4xx — we swallow and re-add below.
+            # Update by UID. If the backend lost the item (e.g. user
+            # deleted it in the HA UI), the update raises and we
+            # re-create below. `TodoProviderError` is the agnostic
+            # equivalent of the old `HAClientError` catch.
             try:
-                await self._client.todo_update_item(
+                await self._todos.update_item(
                     entity_id,
                     inst.ha_todo_uid,
                     rename=summary,
@@ -393,15 +405,15 @@ class HABridge(BridgeProtocol):
                     due_date=due,
                 )
                 return
-            except HAClientError as exc:
+            except TodoProviderError as exc:
                 log.info(
-                    "todo_update_item by uid failed (%s); will re-create", exc
+                    "todo update_item by uid failed (%s); will re-create", exc
                 )
                 inst.ha_todo_uid = None
 
         # No UID known, or update failed — add then capture UID.
-        await self._client.todo_add_item(entity_id, summary, due_date=due)
-        items = await self._client.todo_get_items(entity_id)
+        await self._todos.add_item(entity_id, summary, due_date=due)
+        items = await self._todos.get_items(entity_id)
         tag = fc_tag(inst.id)
         for item in items:
             if item.summary.startswith(tag):
@@ -410,10 +422,10 @@ class HABridge(BridgeProtocol):
                 # flip it now. (add_item always starts as needs_action.)
                 if status != TODO_STATUS_NEEDS_ACTION:
                     try:
-                        await self._client.todo_update_item(
+                        await self._todos.update_item(
                             entity_id, item.uid, status=status
                         )
-                    except HAClientError as exc:
+                    except TodoProviderError as exc:
                         log.info("follow-up status update failed: %s", exc)
                 return
         log.warning(

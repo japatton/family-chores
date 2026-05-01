@@ -30,6 +30,10 @@ from fastapi import FastAPI, HTTPException, status
 
 from family_chores_api import WSManager, create_app as create_api_app
 from family_chores_api.bridge import BridgeProtocol
+from family_chores_api.services.calendar import (
+    CalendarCache,
+    NoOpCalendarProvider,
+)
 from family_chores_saas import __version__
 from family_chores_saas.auth import PlaceholderAuthStrategy
 
@@ -106,6 +110,12 @@ def _build_lifespan() -> Any:
         app.state.jwt_secret = "saas-placeholder-secret-not-for-use"
         app.state.effective_timezone = "UTC"
         app.state.week_starts_on = "monday"
+        # Calendar shims (DECISIONS §14). Tier 2 swaps the no-op for a
+        # CalDAV / Google Calendar provider; for now the SaaS scaffold
+        # just gives the routes something resolvable so the OpenAPI
+        # schema renders and the calendar router doesn't 500 at import.
+        app.state.calendar_cache = CalendarCache()
+        app.state.calendar_provider = NoOpCalendarProvider()
         yield
 
     return _lifespan
