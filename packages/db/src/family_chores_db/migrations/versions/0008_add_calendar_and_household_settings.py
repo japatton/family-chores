@@ -14,15 +14,16 @@ changes:
     privacy lives here — events on Mom's work calendar simply aren't
     mapped to anyone.
 
-  - `household_settings` table — single row per household, scoped via
-    the standard `household_id` pattern. Holds the
-    `shared_calendar_entity_ids` JSON list plus reserved space for
-    future household-level config (the existing `app_config` bag was
-    deliberately not extended; a real table is cleaner long-term).
-
-The `household_id` column on the new table follows the same NULL-in-
-single-tenant convention as the rest of the codebase. Single PK on
-`household_id` so a household can't have two settings rows.
+  - `household_settings` table — one row per household. Schema:
+    synthetic `id INTEGER PRIMARY KEY AUTOINCREMENT` + nullable
+    `household_id` (UNIQUE-where-set; NULL for single-tenant addon).
+    The synthetic PK is a workaround for SQLAlchemy's identity-map
+    rejecting all-NULL primary keys — using `household_id` as the
+    sole PK works at the SQL level (SQLite allows NULL in
+    single-column PKs) but the ORM refuses to flush such a row.
+    Single-row-per-household is enforced application-side by the
+    `_load_or_create` get-or-create pattern, not by a UNIQUE
+    constraint (SQLite doesn't enforce UNIQUE on NULL columns).
 """
 
 from __future__ import annotations
@@ -65,7 +66,8 @@ def upgrade() -> None:
     # ─── household_settings ───────────────────────────────────────────
     op.create_table(
         "household_settings",
-        sa.Column("household_id", sa.String(length=36), primary_key=True, nullable=True),
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+        sa.Column("household_id", sa.String(length=36), nullable=True),
         sa.Column(
             "shared_calendar_entity_ids",
             sa.JSON(),
@@ -84,6 +86,15 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
+    )
+    # Index for fast lookup by `household_id` (every read filters on
+    # it). Not UNIQUE because SQLite doesn't enforce UNIQUE on NULL,
+    # and the application's get-or-create pattern handles
+    # single-row-per-household enforcement instead.
+    op.create_index(
+        "ix_household_settings_household_id",
+        "household_settings",
+        ["household_id"],
     )
 
 

@@ -30,6 +30,7 @@ from family_chores_api.deps.auth import (
     require_role,
 )
 from family_chores_api.deps.bridge import get_bridge
+from family_chores_api.deps.calendar import get_calendar_cache, get_calendar_provider
 from family_chores_api.deps.db import get_session
 from family_chores_api.deps.runtime import (
     get_effective_timezone,
@@ -56,6 +57,8 @@ __all__ = [
     "require_role",
     # State / runtime deps
     "get_bridge",
+    "get_calendar_cache",
+    "get_calendar_provider",
     "get_current_household_id",
     "get_effective_timezone",
     "get_jwt_secret",

@@ -48,6 +48,11 @@ class MemberRead(BaseModel):
     display_mode: DisplayMode
     requires_approval: bool
     ha_todo_entity_id: str | None
+    # Calendar entity ids for this member (DECISIONS §14). Each is a
+    # `calendar.*` entity in HA; the kid view shows events from these
+    # plus any from `household_settings.shared_calendar_entity_ids`.
+    # Empty list = no per-member calendar (still gets shared events).
+    calendar_entity_ids: list[str] = Field(default_factory=list)
     stats: MemberStatsRead
     # Per-kid PIN (DECISIONS §17). Boolean only — the hash itself is
     # never exposed via the API. `false` = no PIN set; `true` = the
@@ -96,6 +101,31 @@ class MemberPinStatus(BaseModel):
     pin_set: bool
 
 
+def _validate_calendar_entity_ids(v: list[str] | None) -> list[str] | None:
+    """Shared validator used by `MemberCreate` and `MemberUpdate` for
+    `calendar_entity_ids`. Mirrors the household-settings validator:
+    must start with `calendar.`, dedupe, preserve order."""
+    if v is None:
+        return v
+    seen: set[str] = set()
+    out: list[str] = []
+    for entity_id in v:
+        if not isinstance(entity_id, str):
+            raise ValueError("entity ids must be strings")
+        stripped = entity_id.strip()
+        if not stripped:
+            continue
+        if not stripped.startswith("calendar."):
+            raise ValueError(
+                f"entity id {stripped!r} must start with 'calendar.'"
+            )
+        if stripped in seen:
+            continue
+        seen.add(stripped)
+        out.append(stripped)
+    return out
+
+
 class MemberCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=64)
     slug: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-z0-9][a-z0-9_-]*$")
@@ -104,6 +134,15 @@ class MemberCreate(BaseModel):
     display_mode: DisplayMode = DisplayMode.KID_STANDARD
     requires_approval: bool = False
     ha_todo_entity_id: str | None = Field(None, max_length=128, pattern=r"^todo\.[a-z0-9_]+$")
+    calendar_entity_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("calendar_entity_ids")
+    @classmethod
+    def _validate_calendar_ids(cls, v: list[str]) -> list[str]:
+        # `_validate_calendar_entity_ids` returns `None` only for `None`
+        # input — Create always supplies a list (default empty), so the
+        # `or []` here is just to satisfy mypy's narrower return type.
+        return _validate_calendar_entity_ids(v) or []
 
 
 class MemberUpdate(BaseModel):
@@ -113,6 +152,12 @@ class MemberUpdate(BaseModel):
     display_mode: DisplayMode | None = None
     requires_approval: bool | None = None
     ha_todo_entity_id: str | None = Field(None, max_length=128, pattern=r"^todo\.[a-z0-9_]+$")
+    calendar_entity_ids: list[str] | None = None
+
+    @field_validator("calendar_entity_ids")
+    @classmethod
+    def _validate_calendar_ids(cls, v: list[str] | None) -> list[str] | None:
+        return _validate_calendar_entity_ids(v)
 
 
 # ─── chores ───────────────────────────────────────────────────────────────
@@ -511,3 +556,100 @@ class ActivityLogPage(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+# ─── calendar (DECISIONS §14) ─────────────────────────────────────────────
+#
+# `CalendarEventRead` mirrors `services.calendar.CalendarEvent` —
+# `RawEvent` plus parsed prep items. The router serialises the
+# service-layer dataclass directly through this schema (Pydantic
+# accepts the dataclass via `from_attributes=True`).
+
+
+class CalendarPrepItemRead(BaseModel):
+    label: str
+    icon: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CalendarEventRead(BaseModel):
+    entity_id: str
+    summary: str
+    description: str | None
+    start: datetime
+    end: datetime
+    all_day: bool
+    location: str | None
+    prep_items: list[CalendarPrepItemRead]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CalendarWindowRead(BaseModel):
+    """Response shape for `/api/calendar/events`. `unreachable` lets the
+    UI render a per-tile error state for any calendar entity that
+    couldn't be reached this fetch (DECISIONS §14 Q11)."""
+
+    events: list[CalendarEventRead]
+    unreachable: list[str]
+
+
+class CalendarRefreshResponse(BaseModel):
+    """Response from `POST /api/calendar/refresh` — how many cache
+    entries were dropped (mostly informational; the SPA just needs
+    to know the call succeeded)."""
+
+    invalidated: int
+
+
+# ─── household settings (DECISIONS §14) ──────────────────────────────────
+#
+# Single-row-per-household configuration. First column is the family-
+# shared calendar entity list; future settings (default member display
+# mode, week-start-day, etc.) land here too.
+
+
+class HouseholdSettingsRead(BaseModel):
+    shared_calendar_entity_ids: list[str] = Field(default_factory=list)
+    updated_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class HouseholdSettingsUpdate(BaseModel):
+    """PUT body — `None` means "leave unchanged" so the SPA can patch
+    one field at a time without sending the whole row."""
+
+    shared_calendar_entity_ids: list[str] | None = Field(
+        None,
+        description=(
+            "List of HA `calendar.*` entity ids that show up on every "
+            "member's view (the family-shared layer)."
+        ),
+    )
+
+    @field_validator("shared_calendar_entity_ids")
+    @classmethod
+    def _validate_entity_ids(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return v
+        # De-dupe while preserving order so the parent's intended
+        # display sequence sticks.
+        seen: set[str] = set()
+        out: list[str] = []
+        for entity_id in v:
+            if not isinstance(entity_id, str):
+                raise ValueError("entity ids must be strings")
+            stripped = entity_id.strip()
+            if not stripped:
+                continue
+            if not stripped.startswith("calendar."):
+                raise ValueError(
+                    f"entity id {stripped!r} must start with 'calendar.'"
+                )
+            if stripped in seen:
+                continue
+            seen.add(stripped)
+            out.append(stripped)
+        return out

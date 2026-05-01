@@ -507,15 +507,20 @@ class HouseholdSettings(Base):
     too (week-start-day moved here later, default member display
     mode, etc.).
 
-    Single-tenant addon mode keeps `household_id = NULL`; the PK is
-    just that one column.
+    Schema choice: synthetic `id` PK + nullable `household_id`. Using
+    `household_id` as the sole PK works at the SQL level (SQLite
+    allows NULL in single-column PKs) but SQLAlchemy's identity-map
+    refuses to flush an all-NULL PK. The synthetic PK side-steps that;
+    the application-level `_load_or_create` pattern enforces the
+    single-row-per-household invariant.
     """
 
     __tablename__ = "household_settings"
 
-    household_id: Mapped[str | None] = mapped_column(
-        String(36), primary_key=True
-    )
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    # Tenant scope (step 8). NULL in single-tenant addon mode; UUID in
+    # multi-tenant SaaS. Indexed in migration 0008.
+    household_id: Mapped[str | None] = mapped_column(String(36))
     shared_calendar_entity_ids: Mapped[list[str]] = mapped_column(
         JSON, nullable=False, default=list, server_default=text("'[]'")
     )

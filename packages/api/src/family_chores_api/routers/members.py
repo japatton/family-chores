@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 from family_chores_api.bridge import BridgeProtocol
 from family_chores_api.deps import (
     get_bridge,
+    get_calendar_cache,
     get_current_household_id,
     get_remote_user,
     get_session,
@@ -41,6 +42,7 @@ from family_chores_api.schemas import (
     MemberUpdate,
 )
 from family_chores_api.security import ParentClaim, hash_pin, verify_pin
+from family_chores_api.services.calendar import CalendarCache
 from family_chores_db.models import ActivityLog, Member, MemberStats
 from family_chores_db.scoped import scoped
 
@@ -70,6 +72,10 @@ def _to_read(member: Member, stats: MemberStats | None) -> MemberRead:
         display_mode=member.display_mode,
         requires_approval=member.requires_approval,
         ha_todo_entity_id=member.ha_todo_entity_id,
+        # `member.calendar_entity_ids` defaults to `[]` via the column
+        # server_default; it can also be `None` for rows created in
+        # tests that bypass the model default. Normalise.
+        calendar_entity_ids=list(member.calendar_entity_ids or []),
         stats=stats_payload,
         pin_set=member.pin_hash is not None,
     )
@@ -139,6 +145,7 @@ async def create_member(
         display_mode=body.display_mode,
         requires_approval=body.requires_approval,
         ha_todo_entity_id=body.ha_todo_entity_id,
+        calendar_entity_ids=list(body.calendar_entity_ids),
         household_id=household_id,
     )
     session.add(member)
@@ -173,6 +180,7 @@ async def update_member(
     user: str = Depends(get_remote_user),
     ws: WSManager = Depends(get_ws_manager),
     bridge: BridgeProtocol = Depends(get_bridge),
+    cache: CalendarCache = Depends(get_calendar_cache),
     household_id: str | None = Depends(get_current_household_id),
     _parent: ParentClaim = Depends(require_parent),
 ) -> MemberRead:
@@ -193,6 +201,11 @@ async def update_member(
             )
         )
     await session.commit()
+    # If the calendar mapping changed, drop the calendar cache so the
+    # next read sees the new entity set immediately (DECISIONS §14
+    # Q10 — config edits should bypass the 60s TTL).
+    if "calendar_entity_ids" in changes:
+        await cache.invalidate()
     bridge.notify_member_dirty(member.id)
     await ws.broadcast({"type": EVT_MEMBER_UPDATED, "member_id": member.id})
     return _to_read(member, member.stats)

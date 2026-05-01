@@ -36,7 +36,9 @@ from family_chores_api.errors import DomainError
 from family_chores_api.routers import (
     admin,
     auth,
+    calendar,
     chores,
+    household,
     instances,
     members,
     rewards,
@@ -171,6 +173,8 @@ def create_app(
     app.include_router(rewards.rewards_router)
     app.include_router(rewards.redemptions_router)
     app.include_router(rewards.member_redemptions_router)
+    app.include_router(household.router)
+    app.include_router(calendar.router)
     app.include_router(ws.router)
 
     return app

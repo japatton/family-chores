@@ -66,12 +66,24 @@ def test_upgrade_head_creates_household_settings(tmp_path):
         assert "household_settings" in tables
         cols = _columns(conn, "household_settings")
         for col in (
+            # Synthetic PK (workaround for SQLAlchemy's all-NULL-PK
+            # rejection — see model docstring + migration 0008 docstring).
+            "id",
             "household_id",
             "shared_calendar_entity_ids",
             "created_at",
             "updated_at",
         ):
             assert col in cols, f"household_settings missing {col}"
+        # An index on household_id should exist for the lookup path.
+        idx = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master "
+                "WHERE type='index' AND tbl_name='household_settings'"
+            )
+        }
+        assert "ix_household_settings_household_id" in idx
 
 
 def test_existing_member_rows_get_empty_calendar_list(tmp_path):
@@ -122,13 +134,16 @@ def test_existing_member_rows_get_empty_calendar_list(tmp_path):
         )
 
 
-def test_household_settings_accepts_null_household_id_pk(tmp_path):
+def test_household_settings_accepts_null_household_id(tmp_path):
+    """Single-tenant addon mode — `household_id` is NULL. The schema
+    uses a synthetic `id` PK + nullable `household_id`, so the row
+    inserts cleanly via the autoincrement and SELECTs back as
+    expected. The single-row-per-household invariant is enforced
+    application-side (the router's `_load_or_create`), not by a
+    UNIQUE constraint (SQLite doesn't enforce UNIQUE on NULL)."""
     db = tmp_path / "test.db"
     command.upgrade(_alembic_config(db), "head")
     with sqlite3.connect(db) as conn:
-        # Single-tenant addon mode — household_id is NULL. SQLite
-        # allows NULL in a single-column PK (matches the convention
-        # used by household_starter_suppression).
         conn.execute(
             "INSERT INTO household_settings "
             "(household_id, shared_calendar_entity_ids, created_at, updated_at) "
@@ -136,9 +151,11 @@ def test_household_settings_accepts_null_household_id_pk(tmp_path):
         )
         conn.commit()
         row = conn.execute(
-            "SELECT shared_calendar_entity_ids FROM household_settings"
+            "SELECT id, household_id, shared_calendar_entity_ids FROM household_settings"
         ).fetchone()
-        assert row[0] == '["calendar.family"]'
+        assert row[0] is not None  # synthetic id assigned
+        assert row[1] is None  # household_id stays NULL
+        assert row[2] == '["calendar.family"]'
 
 
 def test_calendar_entity_ids_accepts_json_list(tmp_path):

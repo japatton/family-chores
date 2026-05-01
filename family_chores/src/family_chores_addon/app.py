@@ -26,6 +26,10 @@ from typing import cast
 from family_chores_api import WSManager
 from family_chores_api import create_app as create_api_app
 from family_chores_api.security import ensure_jwt_secret
+from family_chores_api.services.calendar import (
+    CalendarCache,
+    NoOpCalendarProvider,
+)
 from family_chores_api.services.rollover_service import run_rollover
 from family_chores_api.services.starter_seeding import seed_starter_library
 from family_chores_core.time import local_today
@@ -39,6 +43,7 @@ from family_chores_addon import __version__
 from family_chores_addon.auth import IngressAuthStrategy
 from family_chores_addon.config import Options, load_options
 from family_chores_addon.ha import HABridge, NoOpBridge, make_client_from_env
+from family_chores_addon.ha.calendar import HACalendarProvider
 from family_chores_addon.ha.client import HAClient, HAClientError
 from family_chores_addon.ha.reconcile import reconcile_once
 from family_chores_addon.ha.todo import HATodoProvider
@@ -120,6 +125,17 @@ def _build_lifespan(opts: Options):  # type: ignore[no-untyped-def]
         app.state.ha_client = ha_client
         tz = await _resolve_effective_timezone(opts, ha_client)
         app.state.effective_timezone = tz
+
+        # Calendar wiring (DECISIONS §14). The cache is always present
+        # so routes can depend on it unconditionally; the provider is
+        # the HA-backed one if we have a client, else a NoOp that
+        # returns empty results — the kid view still renders, just
+        # with no events.
+        app.state.calendar_cache = CalendarCache()
+        if ha_client is None:
+            app.state.calendar_provider = NoOpCalendarProvider()
+        else:
+            app.state.calendar_provider = HACalendarProvider(ha_client)
 
         if ha_client is None:
             app.state.bridge = NoOpBridge()

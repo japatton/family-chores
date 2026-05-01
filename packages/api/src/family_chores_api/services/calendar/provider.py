@@ -86,3 +86,23 @@ class CalendarProvider(Protocol):
         from_dt: datetime,
         to_dt: datetime,
     ) -> CalendarProviderResult: ...
+
+
+class NoOpCalendarProvider(CalendarProvider):
+    """Stand-in for deployments without a calendar backend.
+
+    Always returns an empty result with no events and nothing
+    unreachable. Used by:
+      - The addon when no HA credentials are present (NoOpBridge path).
+      - The standalone SaaS target until a CalDAV / Google Calendar
+        provider is added in Tier 2 (DECISIONS §14 roadmap).
+      - Tests that only need the calendar service shape, not real data.
+    """
+
+    async def get_events(
+        self,
+        entity_ids: list[str],
+        from_dt: datetime,
+        to_dt: datetime,
+    ) -> CalendarProviderResult:
+        return CalendarProviderResult()

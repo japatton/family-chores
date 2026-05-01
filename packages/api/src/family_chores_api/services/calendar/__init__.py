@@ -29,6 +29,7 @@ from family_chores_api.services.calendar.provider import (
     CalendarProvider,
     CalendarProviderError,
     CalendarProviderResult,
+    NoOpCalendarProvider,
     RawEvent,
 )
 from family_chores_api.services.calendar.service import (
@@ -46,6 +47,7 @@ __all__ = [
     "CalendarProviderError",
     "CalendarProviderResult",
     "CalendarWindow",
+    "NoOpCalendarProvider",
     "PrepItem",
     "RawEvent",
     "extract_prep_items",
