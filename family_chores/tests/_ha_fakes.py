@@ -11,7 +11,11 @@ from dataclasses import dataclass, field
 from datetime import date as date_type
 from typing import Any
 
-from family_chores_addon.ha.client import HAClientError, HAUnavailableError, TodoItem
+from family_chores_addon.ha.client import (
+    HAClientError,
+    HAUnavailableError,
+    TodoItem,
+)
 
 
 @dataclass
@@ -34,6 +38,10 @@ class FakeHAClient:
         self.calls: list[tuple[str, Any]] = []
         # Set `fail_next` to raise on the next call of a given method.
         self.fail_next: dict[str, Exception] = {}
+        # Generic service-call queue for `call_service` — used by the
+        # HACalendarProvider tests. Map of `(domain, service)` to a
+        # list of canned responses; each call pops the front.
+        self.service_responses: dict[tuple[str, str], list[Any]] = {}
 
     # ─── test helpers ─────────────────────────────────────────────────────
 
@@ -142,6 +150,33 @@ class FakeHAClient:
         ]
         if len(fake_list.items) == before:
             raise HAClientError(f"404: item not found: {item}")
+
+    async def call_service(
+        self,
+        domain: str,
+        service: str,
+        data: dict[str, Any],
+        *,
+        return_response: bool = False,
+    ) -> Any:
+        """Generic service-call shim. Returns the next queued response
+        from `service_responses[(domain, service)]`, or `None` if the
+        queue is empty (so a test that doesn't care about the body
+        doesn't have to set anything up).
+
+        `_maybe_fail` lookup uses `"call_service"` first, then
+        `f"call_service:{domain}.{service}"` for fine-grained failure
+        injection.
+        """
+        self._maybe_fail("call_service")
+        self._maybe_fail(f"call_service:{domain}.{service}")
+        self.calls.append(
+            ("call_service", (domain, service, data, return_response))
+        )
+        queue = self.service_responses.get((domain, service))
+        if queue:
+            return queue.pop(0)
+        return None
 
     async def aclose(self) -> None:
         self.calls.append(("aclose", None))

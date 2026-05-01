@@ -10,6 +10,7 @@ learn UIDs — HA 2026.4 doesn't surface items in entity state attributes).
 """
 
 from family_chores_addon.ha.bridge import HABridge, NoOpBridge
+from family_chores_addon.ha.calendar import HACalendarProvider
 from family_chores_addon.ha.client import (
     HAClient,
     HAClientError,
@@ -21,6 +22,7 @@ from family_chores_addon.ha.client import (
 
 __all__ = [
     "HABridge",
+    "HACalendarProvider",
     "HAClient",
     "HAClientError",
     "HAServerError",
