@@ -327,6 +327,36 @@ class AdjustPointsRequest(BaseModel):
     reason: Annotated[str | None, Field(max_length=256)] = None
 
 
+# ─── calendar (slim shapes used inline by TodayView; the full calendar
+#     surface — the standalone `/api/calendar/events` schemas — lives
+#     further down in this file)
+#
+# Two shapes need to land before `TodayMember` so the field annotation
+# resolves. Defining them here (rather than further down with the
+# rest of the calendar schemas) keeps Pydantic's lazy resolution
+# happy without a `model_rebuild()` call.
+
+
+class CalendarPrepItemRead(BaseModel):
+    label: str
+    icon: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CalendarEventRead(BaseModel):
+    entity_id: str
+    summary: str
+    description: str | None
+    start: datetime
+    end: datetime
+    all_day: bool
+    location: str | None
+    prep_items: list[CalendarPrepItemRead]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 # ─── today view ───────────────────────────────────────────────────────────
 
 
@@ -352,6 +382,16 @@ class TodayMember(BaseModel):
     stats: MemberStatsRead
     today_progress_pct: int
     instances: list[TodayInstance]
+    # Calendar events for this member's day, post hide-past filter
+    # (DECISIONS §14 Q7). Includes events from per-member calendars +
+    # the household-shared list. Empty when no calendars are mapped
+    # or when the provider is the no-op (deployments without HA).
+    calendar_events: list[CalendarEventRead] = Field(default_factory=list)
+    # Per-tile error state for any of the member's calendars that
+    # couldn't be reached this fetch (DECISIONS §14 Q11). UI renders
+    # a small "couldn't reach" hint without dropping the events that
+    # did succeed.
+    calendar_unreachable: list[str] = Field(default_factory=list)
 
 
 class TodayView(BaseModel):
@@ -560,30 +600,10 @@ class ActivityLogPage(BaseModel):
 
 # ─── calendar (DECISIONS §14) ─────────────────────────────────────────────
 #
-# `CalendarEventRead` mirrors `services.calendar.CalendarEvent` —
-# `RawEvent` plus parsed prep items. The router serialises the
-# service-layer dataclass directly through this schema (Pydantic
-# accepts the dataclass via `from_attributes=True`).
-
-
-class CalendarPrepItemRead(BaseModel):
-    label: str
-    icon: str | None = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class CalendarEventRead(BaseModel):
-    entity_id: str
-    summary: str
-    description: str | None
-    start: datetime
-    end: datetime
-    all_day: bool
-    location: str | None
-    prep_items: list[CalendarPrepItemRead]
-
-    model_config = ConfigDict(from_attributes=True)
+# `CalendarPrepItemRead` and `CalendarEventRead` are defined further up
+# (next to `TodayView`) because `TodayMember` embeds the event shape
+# — Pydantic's class-creation order matters. The remaining shapes
+# (window + refresh response + household settings) live here.
 
 
 class CalendarWindowRead(BaseModel):

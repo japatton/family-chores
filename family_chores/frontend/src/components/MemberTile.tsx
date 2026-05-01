@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
-import type { TodayMember } from '../api/types'
+import type { CalendarEvent, TodayMember } from '../api/types'
+import { PrepChipStrip } from './PrepChipStrip'
 import { ProgressRing } from './ProgressRing'
 
 interface MemberTileProps {
@@ -11,6 +12,11 @@ export function MemberTile({ member }: MemberTileProps) {
     ['done', 'done_unapproved', 'skipped'].includes(i.state),
   ).length
   const total = member.instances.length
+
+  // First non-all-day event of the day, used for the "Next:" hint
+  // (DECISIONS §14 PR-B). Past events are filtered server-side, so
+  // events[0] (when present, non-all-day) is "what's next".
+  const nextEvent = member.calendar_events.find((e) => !e.all_day)
 
   // F-U002 (UX sweep): ratio-based progress framing. The old phrasing
   // "X of Y done · Z to go" was math-correct but read as a wall of work
@@ -63,6 +69,24 @@ export function MemberTile({ member }: MemberTileProps) {
         )}
       </div>
 
+      {/* Calendar-related additions (DECISIONS §14 PR-B). The next-up
+          hint and prep chips render only when there's actually
+          something to show — the existing tile layout stays clean for
+          parents who haven't wired up calendars yet. */}
+      {nextEvent && (
+        <div className="mt-4 text-fluid-sm font-semibold text-white opacity-90 flex items-center gap-2 truncate">
+          <span aria-hidden>🕒</span>
+          <NextEventLabel event={nextEvent} />
+        </div>
+      )}
+      <PrepChipStrip events={member.calendar_events} className="mt-3" />
+      {member.calendar_unreachable.length > 0 && (
+        <div className="mt-2 text-fluid-xs font-semibold text-white opacity-80 flex items-center gap-1.5">
+          <span aria-hidden>⚠️</span>
+          <span>Couldn't reach a calendar</span>
+        </div>
+      )}
+
       <div className="mt-8 flex items-end justify-between gap-6">
         <div className="text-white">
           <div className="flex items-baseline gap-2 text-fluid-sm font-semibold opacity-90">
@@ -85,5 +109,17 @@ export function MemberTile({ member }: MemberTileProps) {
         />
       </div>
     </Link>
+  )
+}
+
+function NextEventLabel({ event }: { event: CalendarEvent }) {
+  const time = new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(event.start))
+  return (
+    <span className="truncate">
+      Next: {time} · {event.summary}
+    </span>
   )
 }
