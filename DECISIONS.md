@@ -1091,4 +1091,97 @@ The library JSON uses `"weekly"` for 31 of 46 entries (e.g. `tidy_bedroom`, `wal
 
 ### Pause point
 
-Per prompt §12.2: this commit (DECISIONS.md only — no content files yet) ends the inventory phase. Awaiting human review + answers to Q1–Q5 before starting step 1.
+Per prompt §12.2: this commit (DECISIONS.md only — no content files yet) ends the inventory phase. Awaiting human review + Q1–Q5 answers before starting step 1.
+
+## 14. Calendar integration
+
+Tracking discussion: post-v0.4.0 brainstorm with three personas (engineering, family-coordinator, UX designer) settling the design space before any code lands. The feature crossed the bar from "small follow-up" to "section-worthy" because of two architectural moves: (a) the introduction of `CalendarProvider` / `TodoProvider` Protocol seams, and (b) the first row in the new `household_settings` table. Both lay groundwork the future SaaS deployment will depend on.
+
+(Section numbering: §13 was the previous formal entry. F-S001 / v0.3.1 fixes referenced "§16" in commit messages and the v0.4.0 work referenced "§17"; neither was ever written into this file. They were aspirational placeholders. This is the next real section number.)
+
+### Strategic context
+
+User asked early in the brainstorm: "How far away from this being a standalone product that doesn't need HA to survive?" Honest answer was four tiers:
+
+  - **Tier 1** (~1 week, doing now via this PR series): provider abstractions in place. Same product, but every HA-coupling point goes through a Protocol seam.
+  - **Tier 2** (~3–4 weeks): standalone Docker deployment. Email/password + OAuth, native CalDAV + Google Calendar API providers, Postgres support. Anyone can run it without HA.
+  - **Tier 3** (~3–6 months): SaaS-grade. Multi-tenant hardening (the existing `household_id` plumbing gaps in `TODO_POST_REFACTOR.md` become blocking), Stripe billing, push/email notifications, **COPPA + GDPR-K compliance for kids data**.
+  - **Tier 4** (~6–12 months): mobile-first product. Native iOS/Android (the kid-tablet UX really wants to be native), or polished PWA.
+
+User confirmed Tier 1 commitment as part of this work. Future tiers are optional / undecided. This section's job is to make Tier 1 happen alongside the calendar feature without dragging in the rest.
+
+### Settled design decisions
+
+Each row captures a question raised during the brainstorm and the resolution.
+
+| # | Question | Resolution |
+|---|---|---|
+| 1 | Build native CalDAV/Google calendar clients, or read from HA's calendar entities? | **HA-as-data-source for v1.** `HACalendarProvider` is the only initial Protocol impl. Future providers plug into the same seam. Avoids OAuth/token storage entirely. |
+| 2 | How to enforce parent-only event privacy? | **Per-member calendar-entity mapping.** Parent assigns specific HA `calendar.*` entity IDs to specific members. Events on Mom's work calendar simply aren't mapped to anyone. |
+| 3 | Prep-text convention? | **`[prep: ...]` tag in event description (power-user) + verb-fallback parsing for the 80% case.** Verb list: `bring`, `wear`, `pack`, `don't forget` (from Maya — 4 phrases / 5 words). Both passes feed the same `prep_items: list[{label, icon}]` server-side payload. |
+| 4 | Monthly view: grid or list? | **Both, with toggle.** List is the default (matches the SPA's vertical reading). Grid auto-defaults at viewport ≥1280px AND parent JWT active. Toggle persists per-device in localStorage. |
+| 5 | Per-kid PIN gate covers calendar too? | **Yes — but only when `member.pin_set === true`.** Reuses the existing `kidPinStore`; no new gate machinery. Kids without a PIN see calendar freely (same as chores). |
+| 6 | Member calendar mapping: one entity or list? | **`list[str]` (`ha_calendar_entity_ids`).** Most kids have multiple — school, sports, family-shared. Single-string would mean immediate schema change later. |
+| 7 | Past events on tile / member view? | **Hide once `event.end < now`.** Kids react to "what's next," not "what happened." |
+| 8 | Recurring events? | **Handled by HA's `calendar.get_events` service** which expands recurrences server-side in the response. Free for v1. |
+| 9 | Household-level config: `app_config` row or new table? | **New `household_settings` table.** One row per household. Reserved space for future household-level settings (week start day moved here later, etc.). Cleaner long-term. |
+| 10 | Caching strategy? | **60-second TTL on server-side cache, keyed by `(entity_id, day)` + manual refresh button on monthly view.** WS-driven invalidation rejected because HA's calendar integrations don't reliably fire `state_changed` for individual event edits — would be a false promise. The 60s + refresh combo: short enough that "I just added an event" usually shows up by the next kid glance; explicit button for the parent who wants their last-minute edit immediately. Cache also invalidates on any household-settings or member-calendar-mapping change so config edits are immediate. |
+| 11 | Calendar entity unreachable / 5xx? | **Show a per-tile "couldn't reach calendar" state.** Surfaced via `unreachable_calendars: list[str]` on the response payload. Silent fallback would lie to the user. |
+| 12 | Tier 1 retroactive sweep — wrap existing HA-todo plumbing in a `TodoProvider` Protocol? | **Yes.** `TodoProvider` Protocol added in PR-A; `HATodoProvider` retrofits the existing reconciler / bridge code. Sensor publishing + event firing are already abstracted via `BridgeProtocol` (no work). |
+
+### Architectural shape
+
+**New `packages/api/src/family_chores_api/services/calendar/` directory:**
+
+  - `provider.py` — `CalendarProvider` Protocol (`async def get_events(entity_ids, from_dt, to_dt) -> list[CalendarEvent]`)
+  - `prep.py` — pure prep-parsing helpers (`extract_prep_items(description: str) -> list[PrepItem]`)
+  - `cache.py` — 60s TTL by `(entity_id, day)`, invalidation API
+  - `service.py` — composition: provider + cache + prep parsing into the API-shape `CalendarEvent`
+
+**New `packages/api/src/family_chores_api/services/todo/` directory** (Tier 1 sweep):
+
+  - `provider.py` — `TodoProvider` Protocol matching the existing HA todo surface (get_items, add_item, update_item, remove_item)
+  - The existing `family_chores_addon/ha/reconcile.py` + `family_chores_addon/ha/bridge.py` Local-Todo plumbing is refactored to depend on the Protocol, with `HATodoProvider` as the only initial impl.
+
+**Data model (migration 0008):**
+
+  - `members.calendar_entity_ids: JSON` (defaults to empty list `[]` for existing rows)
+  - New `household_settings` table:
+    - `household_id: str | None` — primary key (NULL in single-tenant addon mode, scoped pattern)
+    - `shared_calendar_entity_ids: JSON` — list of strings, defaults to `[]`
+    - `created_at`, `updated_at` (Python-side defaults via `utcnow`)
+
+**API surface (this PR introduces):**
+
+  - `GET /api/household-settings` — kid-visible (the shared calendar mapping isn't sensitive)
+  - `PATCH /api/household-settings` — parent-required
+  - `GET /api/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD&member_id=N` — kid-visible. Defers to PR-C for the consumer, but the endpoint lands here for completeness.
+  - `POST /api/calendar/refresh` — parent-required, busts the cache.
+
+**API surface (later PRs):**
+
+  - `GET /api/today` extended with `events: list[CalendarEvent]` per member + `shared_events`. Lands in PR-B.
+  - The full monthly-view consumer wiring lands in PR-C.
+
+### PR breakdown
+
+| PR | Effort | Scope |
+|---|---|---|
+| **PR-A** (this one) | 2–3 days | Migration 0008, `CalendarProvider` + `HACalendarProvider`, `TodoProvider` + retrofit, prep-parsing core + tests, `household_settings` CRUD endpoints, `/api/calendar` endpoint shell, cache layer. **No frontend.** |
+| **PR-B** | 3–4 days | `/api/today` extension, MemberTile event chips, MemberView "Today" section with prep chips, `unreachable_calendars` error state. |
+| **PR-C** | 4–5 days | `/calendar` route with list + grid views, view toggle + viewport-aware default, household-settings tab in Parent mode, manual refresh button, member calendar-mapping UI. |
+| **PR-D** | 0.5 day | DOCS.md "Calendar integration" section, this DECISIONS §14 entry's "completion" subsection, `roadmap.md` "Landed" update. |
+
+After all four merge: cut **v0.5.0** (minor bump — new feature surface, no breaking changes; the provider Protocols are additions, not refactors of existing public APIs).
+
+### What this PR (and section) is NOT yet doing
+
+- **Not building a non-HA `CalendarProvider`.** That's Tier 2. The seam exists; the second impl waits for actual demand.
+- **Not implementing the kid-facing UI.** PR-B's job. PR-A is data + API only so each side can be reviewed independently.
+- **Not modifying the existing per-member `ha_todo_entity_id` schema.** The TodoProvider sweep is a code-organization change, not a schema change. Existing column stays as the storage layer; the Protocol wraps the runtime behavior.
+- **Not adding new HA event firing.** Calendar reads, not writes. If/when the addon needs to fire events on calendar changes (e.g., "30 minutes before soccer, blink the hall light"), that's its own feature.
+- **Not bumping `family_chores/config.yaml`.** Per CONTRIBUTING.md the maintainer bumps + tags at release time, after PR-D merges.
+
+### Pause point
+
+This commit (DECISIONS.md only) ends the inventory phase for §14. The user has already settled all 12 questions in the brainstorm — no open questions remain blocking PR-A. Implementation begins immediately in subsequent commits on this branch.
