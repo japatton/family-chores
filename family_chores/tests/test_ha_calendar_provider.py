@@ -352,7 +352,11 @@ async def test_garbage_events_dropped_good_ones_kept():
             "calendar.kid": {
                 "events": [
                     "not a dict",  # garbage
-                    {"summary": "", "start": "2026-05-01T09:00:00+00:00", "end": "2026-05-01T10:00:00+00:00"},  # empty summary
+                    {  # empty summary
+                        "summary": "",
+                        "start": "2026-05-01T09:00:00+00:00",
+                        "end": "2026-05-01T10:00:00+00:00",
+                    },
                     {"summary": "No start"},  # missing start/end
                     {  # the only good one
                         "summary": "Good event",

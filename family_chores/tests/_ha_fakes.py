@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from datetime import date as date_type
 from typing import Any
 
+from family_chores_api.services.todo import TodoProviderError
+
 from family_chores_addon.ha.client import (
     HAClientError,
     HAUnavailableError,
@@ -151,6 +153,69 @@ class FakeHAClient:
         if len(fake_list.items) == before:
             raise HAClientError(f"404: item not found: {item}")
 
+    # ─── TodoProvider Protocol shim (DECISIONS §14 Tier 1) ────────────────
+    #
+    # The reconciler now takes a `TodoProvider` rather than the HA client
+    # directly. To avoid wrapping every test call site in `HATodoProvider(fake)`,
+    # we expose `add_item` / `get_items` / `update_item` / `remove_item`
+    # as thin delegates to the existing `todo_*` methods. FakeHAClient
+    # therefore satisfies BOTH `HAClient` (structurally) AND `TodoProvider`
+    # — the same fake works for bridge tests and reconciler tests.
+    #
+    # `HAClientError` from the underlying todo_* method is wrapped as
+    # `TodoProviderError` to mirror what the production `HATodoProvider`
+    # does, so `except TodoProviderError` in the reconciler catches the
+    # injected failures from `fail_next`.
+
+    async def add_item(
+        self,
+        entity_id: str,
+        summary: str,
+        *,
+        due_date: date_type | None = None,
+        description: str | None = None,
+    ) -> None:
+        try:
+            await self.todo_add_item(
+                entity_id, summary, due_date=due_date, description=description
+            )
+        except HAClientError as exc:
+            raise TodoProviderError(str(exc)) from exc
+
+    async def get_items(self, entity_id: str) -> list[TodoItem]:
+        try:
+            return await self.todo_get_items(entity_id)
+        except HAClientError as exc:
+            raise TodoProviderError(str(exc)) from exc
+
+    async def update_item(
+        self,
+        entity_id: str,
+        item: str,
+        *,
+        rename: str | None = None,
+        status: str | None = None,
+        due_date: date_type | None = None,
+        description: str | None = None,
+    ) -> None:
+        try:
+            await self.todo_update_item(
+                entity_id,
+                item,
+                rename=rename,
+                status=status,
+                due_date=due_date,
+                description=description,
+            )
+        except HAClientError as exc:
+            raise TodoProviderError(str(exc)) from exc
+
+    async def remove_item(self, entity_id: str, item: str) -> None:
+        try:
+            await self.todo_remove_item(entity_id, item)
+        except HAClientError as exc:
+            raise TodoProviderError(str(exc)) from exc
+
     async def call_service(
         self,
         domain: str,
@@ -182,4 +247,10 @@ class FakeHAClient:
         self.calls.append(("aclose", None))
 
 
-__all__ = ["FakeHAClient", "FakeTodoList", "HAClientError", "HAUnavailableError"]
+__all__ = [
+    "FakeHAClient",
+    "FakeTodoList",
+    "HAClientError",
+    "HAUnavailableError",
+    "TodoProviderError",
+]
