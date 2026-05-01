@@ -105,6 +105,21 @@ Three implementations in the tree:
 
 Routers under `packages/api/` depend only on the Protocol. Swapping strategies requires changing zero imports in the shared code.
 
+## Provider Protocols (HA-decoupling seam)
+
+The same Protocol pattern decouples the addon's HA-specific subsystems from the shared service layer. Today there are two:
+
+| Protocol | Defined in | HA impl | NoOp impl |
+|----------|------------|---------|-----------|
+| `CalendarProvider` | `packages/api/services/calendar/provider.py` | `family_chores/.../ha/calendar.py` (`HACalendarProvider`) | `NoOpCalendarProvider` (same module) |
+| `TodoProvider` | `packages/api/services/todo/provider.py` | `family_chores/.../ha/todo.py` (`HATodoProvider`) | `NoOpTodoProvider` (same module) |
+
+The composition service (`packages/api/services/calendar/service.py`) and the bridge / reconciler (`family_chores/.../ha/bridge.py`, `.../ha/reconcile.py`) depend only on the Protocols. The addon's lifespan (`family_chores_addon/app.py`) constructs the HA-backed implementations once at startup; the SaaS scaffold (`apps/saas-backend/src/.../app_factory.py`) constructs the no-op variants. Routers + services don't know which is plugged in.
+
+This is the seam Tier 2 of the [DECISIONS §14 decoupling roadmap](../DECISIONS.md) builds on: a future standalone Docker target swaps in a CalDAV / Google Calendar / Microsoft Calendar provider without touching the bridge or service code.
+
+See [`docs/calendar.md`](calendar.md) for the calendar-specific shape.
+
 ## Tenancy
 
 All tenant-scoped tables in `packages/db/` carry a `household_id: str` column. Every query in the shared layer uses the `scoped(col, value)` helper:

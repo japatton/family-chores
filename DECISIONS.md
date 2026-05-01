@@ -1185,3 +1185,44 @@ After all four merge: cut **v0.5.0** (minor bump — new feature surface, no bre
 ### Pause point
 
 This commit (DECISIONS.md only) ends the inventory phase for §14. The user has already settled all 12 questions in the brainstorm — no open questions remain blocking PR-A. Implementation begins immediately in subsequent commits on this branch.
+
+### Completion (2026-05-01)
+
+All four PRs merged and v0.5.0 released. Net adds across the four:
+
+- **24 new files** (8 backend src, 8 backend tests, 6 frontend components, 2 docs).
+- **~3,300 lines added** end-to-end including tests + docs.
+- **45 new backend tests** (16 cache + 19 service + 19 HA provider + 6 NoOp todo + 9 HA todo + 22 router HTTP + 9 today-extension) and **33 new frontend tests** (7 PrepChipStrip + 8 CalendarDayList + 10 MonthGrid + 8 CalendarEntityIdsEditor).
+
+PR-by-PR summary:
+
+| PR | Sha | Scope | Notes |
+|----|-----|-------|-------|
+| PR-A | 414cfae | Migration 0008, `CalendarProvider` Protocol + `HACalendarProvider`, `TodoProvider` Protocol + retrofit, prep parser, cache, composition service, `/api/household/settings` + `/api/calendar` endpoints | Migration 0008 had to be amended in-place to swap `HouseholdSettings` from a single-column `household_id` PK to a synthetic `id` PK + nullable `household_id` — SQLAlchemy's identity map rejects all-NULL PKs even though SQLite accepts them. |
+| PR-B | 0bfe0fe + 23f1353 | `/api/today` extension, `PrepChipStrip` + `CalendarDayList` components, `MemberTile` chip strip + next-event line, `MemberView` Today section | Calendar fetch on `/api/today` is best-effort: a provider exception logs and continues with empty events. Chores must NEVER fail because of a calendar issue. |
+| PR-C | 18ff581 | Calendar tab in Parent nav, `MonthGrid` 6×7 grid, `CalendarEntityIdsEditor` chip input, household-shared + per-member settings panels, refresh button | Window fetched matches the visible 42 cells (Mon-first), not just the calendar month — avoids "where's my Apr 30 event in the May grid?" off-by-one. |
+| PR-D | (this) | `docs/calendar.md`, this completion subsection, `docs/roadmap.md` "Landed" entry, `docs/architecture.md` provider Protocols mention | Docs only — no code change. |
+
+**Deviations from the original plan:**
+
+- **§14's PR-A inventory said `GET /api/household-settings` and `PATCH`.** Shipped as `GET /api/household/settings` + `PUT` (slash-separated path matches REST convention; `PUT` matches the "replace this scalar setting" semantic better than `PATCH` for a single-row config table).
+- **`/api/calendar` endpoint shape changed.** Inventory said `GET /api/calendar?from=&to=&member_id=`. Shipped as `GET /api/calendar/events` (the `/calendar` namespace also hosts `POST /api/calendar/refresh` so an `/events` segment disambiguates).
+- **`TodayMember.events` field name.** Inventory said `events: list[CalendarEvent]`. Shipped as `calendar_events: list[CalendarEventRead]` to avoid colliding with anyone's mental model of "today's chore instances are events" — the namespacing is worth the extra characters.
+- **`unreachable_calendars` → `calendar_unreachable`.** Same reason: `calendar_*` prefix groups all calendar-related fields on `TodayMember` for easy grep.
+- **Tier 1 sweep was bigger than originally scoped.** Inventory said "wrap todo plumbing in a TodoProvider". Reality: the bridge AND reconciler both depended on `HAClient.todo_*` directly, so the sweep updated both call sites + the FakeHAClient (extending it to satisfy both `HAClient` and `TodoProvider` structurally so no test call sites had to change). Net 11 files modified, 256 existing addon tests still green.
+
+**Things deliberately deferred:**
+
+- **No per-calendar color picker.** All event chips on the monthly grid use the brand color. A "color this calendar pink" UI would need a settings shape change (color per entity_id) — easy fast-follow if user testing wants it.
+- **No FullCalendar / scheduler view.** The `MonthGrid` is custom and intentionally minimal. A library-driven calendar would be heavier and bring its own UX assumptions; the custom grid renders in <1KB of component code and matches the rest of the addon's design system.
+- **No autocomplete on entity ids.** The chip-input editor is type-and-add. A future "list available `calendar.*` entities from HA" autocomplete would need a new endpoint exposing the HA entity registry; revisit if user testing surfaces "what's my entity id called" friction.
+- **No write path.** Calendar reads, not writes. If the addon needs to fire HA events on calendar changes (e.g. "30 min before soccer, blink the hall light"), that's its own feature and lives in HA automations triggered by the existing `family_chores_*` events.
+
+**Lessons / things future-me should know:**
+
+- **SQLite NULL PKs are an SQLAlchemy issue, not a SQLite issue.** Single-column NULL PKs work in SQLite; SQLAlchemy's identity map rejects them. The `HouseholdSettings.id` synthetic PK + nullable `household_id` pattern is the workaround. If we ever need a similar single-row-per-household table, copy this shape.
+- **Provider Protocols are cheap.** The TodoProvider sweep was ~250 lines of new code for the seam — and it makes Tier 2 (standalone deployment) achievable without rewriting the bridge. The CalendarProvider Protocol is the same shape. Whenever the addon grows a third HA-coupled subsystem (e.g. "presence detection drives display mode"), pre-emptively wrapping it in a Protocol from day one is cheaper than retrofitting.
+- **Best-effort calendar fetch on `/api/today` is the right call.** The kid view depending on HA being up would be a regression vs. v0.4. The exception handler in `today_view` is load-bearing.
+- **`from __future__ import annotations` doesn't fully help with Pydantic forward refs in v2.** `TodayMember.calendar_events: list[CalendarEventRead]` still requires `CalendarEventRead` to be defined before `TodayMember` at module-load time, even with the annotations import. Solution: move `CalendarEventRead` (and `CalendarPrepItemRead`) up in the file. (The cleaner alternative — `model_rebuild()` after import — is more code for the same effect.)
+
+The §14 work shipped in v0.5.0. Marker entry in `docs/roadmap.md` "Landed" updated; `docs/calendar.md` is the user-facing reference; `docs/architecture.md` was lightly extended to mention the Provider Protocols.
