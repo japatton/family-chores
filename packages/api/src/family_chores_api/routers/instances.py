@@ -8,20 +8,29 @@ Each transition:
   4. Notifies the HA bridge (member sensors + todo item + approvals count)
      and fires the relevant `family_chores_*` event.
   5. Broadcasts a `instance_updated` WebSocket event.
+
+The `/today` view is also the kid-facing surface for calendar events
+(DECISIONS §14): each `TodayMember` carries `calendar_events` for the
+day (post hide-past filter) so the parent's home and the kid view can
+both render "what's happening today" without a separate API roundtrip.
 """
 
 from __future__ import annotations
 
-from datetime import date as date_type
+import logging
+from datetime import UTC, date as date_type, datetime, time as time_type, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from zoneinfo import ZoneInfo
 
 from family_chores_api.bridge import BridgeProtocol
 from family_chores_api.deps import (
     get_bridge,
+    get_calendar_cache,
+    get_calendar_provider,
     get_current_household_id,
     get_effective_timezone,
     get_remote_user,
@@ -34,12 +43,21 @@ from family_chores_api.errors import NotFoundError
 from family_chores_api.events import EVT_INSTANCE_UPDATED, WSManager
 from family_chores_api.schemas import (
     AdjustPointsRequest,
+    CalendarEventRead,
     InstanceRead,
     MemberStatsRead,
     RejectRequest,
     TodayInstance,
     TodayMember,
     TodayView,
+)
+from family_chores_api.services.calendar import (
+    CalendarCache,
+    CalendarEvent,
+    CalendarProvider,
+    get_events_for_window,
+    hide_past,
+    partition_by_member,
 )
 from family_chores_api.security import ParentClaim
 from family_chores_api.services.instance_actions import (
@@ -55,10 +73,13 @@ from family_chores_core.time import local_today
 from family_chores_db.models import (
     Chore,
     ChoreInstance,
+    HouseholdSettings,
     InstanceState,
     Member,
 )
 from family_chores_db.scoped import scoped
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["instances"])
 
@@ -327,10 +348,62 @@ async def adjust_points(
 _today_router = APIRouter()
 
 
+def _today_window_utc(today: date_type, tz: str) -> tuple[datetime, datetime]:
+    """Return (start, end) UTC bounds for "today" in `tz`.
+
+    Start = local 00:00 today, end = local 00:00 tomorrow. Both are
+    tz-aware UTC. Used to scope the calendar fetch so an event at
+    11pm local (UTC + 5h) shows up as today, not tomorrow.
+    """
+    zone = ZoneInfo(tz)
+    start_local = datetime.combine(today, time_type.min, tzinfo=zone)
+    end_local = start_local + timedelta(days=1)
+    return start_local.astimezone(UTC), end_local.astimezone(UTC)
+
+
+async def _shared_calendar_ids(
+    session: AsyncSession, household_id: str | None
+) -> list[str]:
+    """Fetch the household's shared calendar entity ids. Returns
+    empty when no row exists (fresh installs)."""
+    if household_id is None:
+        q = select(HouseholdSettings).where(
+            HouseholdSettings.household_id.is_(None)
+        )
+    else:
+        q = select(HouseholdSettings).where(
+            HouseholdSettings.household_id == household_id
+        )
+    row = (await session.execute(q)).scalar_one_or_none()
+    return list(row.shared_calendar_entity_ids or []) if row else []
+
+
+def _calendar_event_to_read(event: CalendarEvent) -> CalendarEventRead:
+    return CalendarEventRead.model_validate(event, from_attributes=True)
+
+
+def _per_member_unreachable(
+    member_calendar_map: dict[int, list[str]],
+    unreachable: list[str],
+) -> dict[int, list[str]]:
+    """Project the global unreachable list down per-member so the UI
+    can show a per-tile error state. A member is "affected" by an
+    unreachable entity only if it appears in their mapping."""
+    if not unreachable:
+        return {mid: [] for mid in member_calendar_map}
+    unreachable_set = set(unreachable)
+    return {
+        mid: [eid for eid in entity_ids if eid in unreachable_set]
+        for mid, entity_ids in member_calendar_map.items()
+    }
+
+
 @_today_router.get("/today", response_model=TodayView)
 async def today_view(
     tz: str = Depends(get_effective_timezone),
     session: AsyncSession = Depends(get_session),
+    provider: CalendarProvider = Depends(get_calendar_provider),
+    cache: CalendarCache = Depends(get_calendar_cache),
     household_id: str | None = Depends(get_current_household_id),
 ) -> TodayView:
     today = local_today(tz)
@@ -356,6 +429,46 @@ async def today_view(
     by_member: dict[int, list[tuple[ChoreInstance, Chore]]] = {}
     for inst, chore in rows:
         by_member.setdefault(inst.member_id, []).append((inst, chore))
+
+    # ─── calendar fetch (DECISIONS §14) ────────────────────────────────
+    # Single batched provider call for all entity ids the household
+    # cares about today. Then `partition_by_member` shears the
+    # event list per member, with shared calendars appearing under
+    # every member that lists them. Failures degrade gracefully:
+    # `calendar_events` ends up empty for that member; `unreachable`
+    # propagates so the UI can render a per-tile hint.
+    shared_ids = await _shared_calendar_ids(session, household_id)
+    member_calendar_map: dict[int, list[str]] = {
+        m.id: list(m.calendar_entity_ids or []) + shared_ids for m in members
+    }
+    all_entity_ids: list[str] = []
+    seen_ids: set[str] = set()
+    for ids in member_calendar_map.values():
+        for eid in ids:
+            if eid in seen_ids:
+                continue
+            seen_ids.add(eid)
+            all_entity_ids.append(eid)
+
+    events_by_member: dict[int, list[CalendarEvent]] = {m.id: [] for m in members}
+    unreachable_by_member: dict[int, list[str]] = {m.id: [] for m in members}
+    if all_entity_ids:
+        try:
+            from_dt, to_dt = _today_window_utc(today, tz)
+            window = await get_events_for_window(
+                provider, cache, all_entity_ids, from_dt, to_dt
+            )
+            now_utc = datetime.now(UTC)
+            visible = hide_past(window.events, now=now_utc)
+            partitioned = partition_by_member(visible, member_calendar_map)
+            events_by_member.update(partitioned)
+            unreachable_by_member = _per_member_unreachable(
+                member_calendar_map, list(window.unreachable)
+            )
+        except Exception:
+            # Calendar fetch is best-effort — chores must always render
+            # even if HA is down. Log and continue with empty lists.
+            log.exception("today_view calendar fetch failed; serving without events")
 
     today_members: list[TodayMember] = []
     for member in members:
@@ -403,6 +516,11 @@ async def today_view(
                     )
                     for inst, chore in entries
                 ],
+                calendar_events=[
+                    _calendar_event_to_read(e)
+                    for e in events_by_member.get(member.id, [])
+                ],
+                calendar_unreachable=unreachable_by_member.get(member.id, []),
             )
         )
     return TodayView(date=today, members=today_members)
