@@ -5,6 +5,106 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-05-01
+
+Minor release: calendar integration. Family Chores now reads HA
+`calendar.*` entities and surfaces today's events on each kid's tile
+(with auto-extracted prep chips like 🥾 cleats, 💧 water bottle), shows
+a "Today's events" panel inside the kid view, and adds a Parent →
+Calendar tab with a monthly grid + per-member and household-shared
+mapping settings. Under the hood, two new provider Protocols decouple
+the addon from HA-specific code.
+
+### Added
+
+- **Per-member calendar mapping** (PR #14, DECISIONS §14). Each
+  family member can be assigned one or more HA `calendar.*` entities
+  via the new Parent → Calendar tab. Migration 0008 adds
+  `members.calendar_entity_ids: JSON` defaulting to `[]` for existing
+  rows. New schema field exposed on the existing `MemberRead` shape.
+- **Family-shared calendars** (PR #14). New `household_settings` table
+  carries `shared_calendar_entity_ids: JSON`. Calendars listed here
+  appear on every member's view (good for "Family dinner" or holiday
+  spans). New endpoints: `GET /api/household/settings` (kid-visible,
+  needed for shared event rendering) + `PUT` (parent-only, busts
+  cache).
+- **Calendar event reads** (PR #14). New `GET /api/calendar/events?from=&to=&member_id?=` returns events for the requested window with parsed prep items and per-tile unreachable error state. `POST /api/calendar/refresh` (parent-only) busts the 60-second cache. Backed by a 60s TTL cache keyed by `(entity_id, day)` with manual invalidation.
+- **Prep-text extraction** (PR #14). Parses event descriptions for
+  what the kid needs to bring/wear. Two formats: explicit
+  `[prep: cleats, water bottle]` (power-user, wins over verb
+  detection) and verb fallback (`bring|wear|pack|don't forget` with
+  sentence-anchored noun-phrase capture, clause-break truncation at
+  prepositions). 25-entry icon dictionary maps common kid items to
+  emoji.
+- **Kid-facing calendar surfaces** (PR #18, DECISIONS §14 PR-B). The
+  parent's home tile gains a "Next: 4:00 PM · Soccer" hint and a
+  compact prep chip strip (de-duped across all today's events for
+  the member, collapses to "+N more" past the visible chips). The
+  kid's MemberView gets a "Today's events" panel below the chore
+  list with start time / All-day badge, summary, location, and full
+  prep chips. Past events filtered server-side. `/api/today` extended
+  with `calendar_events` + `calendar_unreachable` per-member fields.
+- **Parent monthly calendar tab** (PR #19, DECISIONS §14 PR-C). New
+  Parent → Calendar tab with a 6×7 monthly grid (up to 3 event chips
+  per cell with overflow pill, today highlight, selected-day ring),
+  side panel showing the selected day's full event list, and a
+  settings panel for wiring household-shared and per-member entity
+  ids via a chip-style add/remove editor. Refresh button busts caches
+  end-to-end so freshly-added HA events show up immediately.
+
+### Changed
+
+- **Bridge + reconciler now depend on `TodoProvider` Protocol**
+  (PR #14, DECISIONS §14 Tier 1 sweep). Internal refactor: the HA-
+  todo plumbing is wrapped behind the new `TodoProvider` Protocol so
+  a future SaaS deployment can swap in a different backend (Google
+  Tasks, CalDAV, in-app no-op) without touching bridge or reconciler
+  logic. Behaviour is identical for the addon — the existing
+  `HAClient.todo_*` methods now route through the `HATodoProvider`
+  wrapper. The 256 existing addon tests stay green; the FakeHAClient
+  was extended to satisfy both `HAClient` and `TodoProvider`
+  structurally so no test call sites had to change.
+- **`HouseholdSettings` table schema** (PR #14). Single-tenant addon
+  mode keeps `household_id = NULL`, but the table uses a synthetic
+  `id INTEGER PRIMARY KEY AUTOINCREMENT` plus a nullable indexed
+  `household_id` column (instead of `household_id` as the sole PK).
+  SQLAlchemy's identity map rejects all-NULL primary keys even though
+  SQLite accepts them; the synthetic PK is the workaround. Single-
+  row-per-household is enforced application-side via the get-or-
+  create pattern in the `/api/household/settings` router.
+
+### Architecture
+
+- **`CalendarProvider` Protocol** (DECISIONS §14 Tier 1). New seam in
+  `packages/api/services/calendar/`. The addon ships
+  `HACalendarProvider` (wraps `HAClient.call_service("calendar",
+  "get_events", …)`); SaaS scaffold uses `NoOpCalendarProvider`. The
+  composition service that does prep-extraction + caching + event
+  partitioning depends only on the Protocol. Tier 2 of the
+  decoupling roadmap (standalone Docker, no HA) builds on this seam
+  without rewriting the bridge.
+- See [`docs/calendar.md`](../docs/calendar.md) for the user-facing
+  reference and [DECISIONS §14](../DECISIONS.md) for the design
+  journal + completion retrospective.
+
+### Migration
+
+- Migration 0008 (`add calendar mapping + household_settings`) runs
+  on first boot of v0.5.0. Existing `members` rows pick up
+  `calendar_entity_ids = []` via column server-default; new
+  `household_settings` table starts empty. Uses native
+  `op.add_column` (not `op.batch_alter_table`) to avoid the SQLite
+  table-recreation cascade-delete bug that would have wiped
+  `member_stats`. Migration test 0008 pins this regression.
+
+### Tests
+
+- **+78 net new tests**: 16 cache + 19 service + 19 HA provider + 6
+  NoOp todo + 9 HA todo + 22 calendar/household HTTP + 9 today-
+  extension (Python) plus 7 PrepChipStrip + 8 CalendarDayList +
+  10 MonthGrid + 8 CalendarEntityIdsEditor (frontend). All
+  workspaces green via `./scripts/lint.sh`.
+
 ## [0.4.0] — 2026-04-30
 
 Minor release: two new user-visible features (per-kid PIN + reward
