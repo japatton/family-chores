@@ -6,9 +6,12 @@ import {
 import { apiFetch } from './client'
 import type {
   ActivityPage,
+  CalendarWindow,
   Chore,
   ChoreCreate,
   ChoreCreateResult,
+  HouseholdSettings,
+  HouseholdSettingsUpdate,
   InfoResponse,
   Instance,
   Member,
@@ -621,5 +624,76 @@ export function useRebuildStats() {
         parentToken: token,
       }),
     onSuccess: () => qc.invalidateQueries(),
+  })
+}
+
+// ─── calendar (DECISIONS §14) ────────────────────────────────────────────
+//
+// `useCalendarEvents` consumes the windowed `/api/calendar/events`
+// endpoint that PR-A added. Cache key includes the window bounds so
+// scrolling between months doesn't refetch a window that's already
+// loaded; the server-side 60s TTL handles cross-day staleness.
+
+export function useCalendarEvents(
+  fromIso: string | null,
+  toIso: string | null,
+  memberId?: number,
+) {
+  return useQuery({
+    queryKey: ['calendar', 'events', fromIso, toIso, memberId ?? null],
+    queryFn: () => {
+      const params = new URLSearchParams()
+      params.set('from', fromIso!)
+      params.set('to', toIso!)
+      if (memberId !== undefined) params.set('member_id', String(memberId))
+      return apiFetch<CalendarWindow>(`/calendar/events?${params.toString()}`)
+    },
+    enabled: !!fromIso && !!toIso,
+    staleTime: 30_000,
+  })
+}
+
+export function useHouseholdSettings() {
+  return useQuery({
+    queryKey: ['household-settings'],
+    queryFn: () => apiFetch<HouseholdSettings>('/household/settings'),
+    staleTime: 30_000,
+  })
+}
+
+export function useUpdateHouseholdSettings() {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: (body: HouseholdSettingsUpdate) =>
+      apiFetch<HouseholdSettings>('/household/settings', {
+        method: 'PUT',
+        parentToken: token,
+        json: body,
+      }),
+    onSuccess: () => {
+      // Bust both the settings query and any windowed event queries —
+      // a settings change invalidates the server-side cache too, so
+      // the next event read will re-fetch from the provider.
+      qc.invalidateQueries({ queryKey: ['household-settings'] })
+      qc.invalidateQueries({ queryKey: ['calendar'] })
+      qc.invalidateQueries({ queryKey: ['today'] })
+    },
+  })
+}
+
+export function useRefreshCalendar() {
+  const qc = useQueryClient()
+  const token = useParentStore((s) => (s.isActive() ? s.token : null))
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<{ invalidated: number }>('/calendar/refresh', {
+        method: 'POST',
+        parentToken: token,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['calendar'] })
+      qc.invalidateQueries({ queryKey: ['today'] })
+    },
   })
 }
