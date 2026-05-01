@@ -36,6 +36,10 @@ export interface Member {
   display_mode: DisplayMode
   requires_approval: boolean
   ha_todo_entity_id: string | null
+  // Calendar entity ids (DECISIONS §14). Each is an HA `calendar.*`
+  // entity assigned to this member. Empty list = no per-member
+  // calendar (still gets household-shared events).
+  calendar_entity_ids: string[]
   stats: MemberStats
   // Per-kid PIN (DECISIONS §17). Boolean only — the hash is server-side only.
   pin_set: boolean
@@ -60,6 +64,7 @@ export interface MemberCreate {
   display_mode?: DisplayMode
   requires_approval?: boolean
   ha_todo_entity_id?: string | null
+  calendar_entity_ids?: string[]
 }
 
 export interface MemberUpdate {
@@ -69,6 +74,7 @@ export interface MemberUpdate {
   display_mode?: DisplayMode
   requires_approval?: boolean
   ha_todo_entity_id?: string | null
+  calendar_entity_ids?: string[]
 }
 
 export interface Chore {
@@ -195,6 +201,38 @@ export interface TodayInstance {
   time_window_end: string | null
 }
 
+// Calendar shapes (DECISIONS §14). Mirror the Pydantic schemas in
+// packages/api/src/family_chores_api/schemas.py.
+export interface CalendarPrepItem {
+  label: string
+  icon: string | null
+}
+
+export interface CalendarEvent {
+  entity_id: string
+  summary: string
+  description: string | null
+  start: string // ISO 8601 datetime
+  end: string // ISO 8601 datetime
+  all_day: boolean
+  location: string | null
+  prep_items: CalendarPrepItem[]
+}
+
+export interface CalendarWindow {
+  events: CalendarEvent[]
+  unreachable: string[]
+}
+
+export interface HouseholdSettings {
+  shared_calendar_entity_ids: string[]
+  updated_at: string | null
+}
+
+export interface HouseholdSettingsUpdate {
+  shared_calendar_entity_ids?: string[]
+}
+
 export interface TodayMember {
   id: number
   slug: string
@@ -206,6 +244,12 @@ export interface TodayMember {
   stats: MemberStats
   today_progress_pct: number
   instances: TodayInstance[]
+  // Calendar surface (DECISIONS §14 PR-B). `calendar_events` is
+  // already filtered for past events on the server. `calendar_unreachable`
+  // is the subset of THIS member's calendars that failed to fetch
+  // — the UI renders a small per-tile hint.
+  calendar_events: CalendarEvent[]
+  calendar_unreachable: string[]
 }
 
 export interface TodayView {

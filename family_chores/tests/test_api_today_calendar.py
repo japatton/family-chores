@@ -14,7 +14,6 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
-
 from family_chores_api.services.calendar import (
     CalendarCache,
     CalendarProviderResult,

@@ -7,6 +7,7 @@ import {
   useUndoInstance,
   useVerifyMemberPin,
 } from '../api/hooks'
+import { CalendarDayList } from '../components/CalendarDayList'
 import { CelebrationAllDone } from '../components/CelebrationAllDone'
 import { ChoreCard } from '../components/ChoreCard'
 import { fireConfetti } from '../components/Confetti'
@@ -92,6 +93,8 @@ export function MemberView() {
   }
   const todayForMember = today.data?.members.find((x) => x.id === m.id)
   const instances = todayForMember?.instances ?? []
+  const calendarEvents = todayForMember?.calendar_events ?? []
+  const calendarUnreachable = todayForMember?.calendar_unreachable ?? []
   const doneCount = instances.filter((i) =>
     ['done', 'done_unapproved', 'skipped'].includes(i.state),
   ).length
@@ -173,6 +176,15 @@ export function MemberView() {
           ))}
         </div>
       )}
+
+      {/* Calendar surface (DECISIONS §14 PR-B). Sits below the chore
+          list so chores stay the focus — but stays visible whether the
+          kid is mid-list, all-done, or has zero chores. */}
+      <CalendarDayList
+        events={calendarEvents}
+        unreachable={calendarUnreachable}
+        className="mt-8"
+      />
 
       {undoTarget !== null && (
         <UndoToast
