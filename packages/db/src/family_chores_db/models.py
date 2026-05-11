@@ -266,6 +266,17 @@ class ActivityLog(Base):
     # Tenant scope (step 8). See `Member.household_id`.
     household_id: Mapped[str | None] = mapped_column(String(36))
 
+    # D-6 from the v0.5.0 ultra-review: `routers/admin.py:list_activity`
+    # always filters by household_id + orders by (ts DESC, id DESC).
+    # Single-column indexes on `ts` and `action` can't satisfy the
+    # ORDER BY when there's a WHERE household_id; SQLite resorts. At
+    # family scale this is invisible; once the log grows to tens of
+    # thousands of rows (a few months of heavy use), a composite
+    # `(household_id, ts)` index turns the query into an index scan.
+    __table_args__ = (
+        Index("ix_activity_log_household_ts", "household_id", "ts"),
+    )
+
 
 class AppConfig(Base):
     """Simple key-value store for runtime secrets and cached HA state.
