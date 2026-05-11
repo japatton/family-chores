@@ -192,10 +192,16 @@ def _build_lifespan(opts: Options):  # type: ignore[no-untyped-def]
         # retry. Skipped when there's no HA client (NoOpBridge path).
         if ha_client is not None and app.state.todo_provider is not None:
             try:
+                # H-6 fix: serialise against the bridge worker's flush
+                # lock so we never orphan-delete a todo the bridge has
+                # just added but not yet committed. `app.state.bridge`
+                # is an HABridge (not NoOpBridge) in this branch.
+                bridge_flush_lock = getattr(app.state.bridge, "flush_lock", None)
                 rec = await reconcile_once(
                     app.state.todo_provider,
                     app.state.session_factory,
                     today=local_today(tz),
+                    bridge_flush_lock=bridge_flush_lock,
                 )
                 log.info(
                     "startup reconcile: members=%d created=%d updated=%d deleted=%d errors=%d",

@@ -80,7 +80,16 @@ def make_scheduler(
             return
         today = local_today(tz)
         try:
-            result = await reconcile_once(todos, session_factory, today=today)
+            # H-6 fix: pass the bridge's flush lock so reconcile and
+            # bridge-flush serialise — prevents orphan-delete of
+            # freshly-added-but-not-yet-committed todos.
+            bridge_flush_lock = getattr(bridge, "flush_lock", None)
+            result = await reconcile_once(
+                todos,
+                session_factory,
+                today=today,
+                bridge_flush_lock=bridge_flush_lock,
+            )
             log.info(
                 "todo reconcile: members=%d created=%d updated=%d deleted=%d errors=%d",
                 result.members_processed,

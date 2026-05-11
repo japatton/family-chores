@@ -165,15 +165,42 @@ async def _fetch_and_cache(
 
     result = await provider.get_events(entity_ids, from_dt, to_dt)
 
-    # Bucket the returned events by (entity_id, day-of-start).
+    # Bucket the returned events by (entity_id, day). A multi-day event
+    # (e.g. "Spring Break" Apr 7–14 or a tournament running Fri-Sun)
+    # appears under EVERY day it covers, not just the start day —
+    # otherwise a partial cache hit on day N (where N != start) returns
+    # an empty list and the event silently disappears (D-1 from the
+    # v0.5.0 ultra-review). The proper fix is the cache rekey to
+    # `(entity_id, window_start_iso, household_id)` (DECISIONS §14
+    # PR-A successor); this is the hot-fix for v0.6.0.
+    #
+    # Out-of-window events still flow through `by_key` (the caller
+    # filters with `hide_past` and the consumer's own window logic) —
+    # we don't drop them. Cache fill is clamped to `days` regardless
+    # so a long-span event doesn't balloon the cache.
     buckets: dict[tuple[str, date_type], list[RawEvent]] = {}
     for event in result.events:
-        key = (event.entity_id, event.start.date())
-        buckets.setdefault(key, []).append(event)
+        first_day = event.start.date()
+        # For all-day events HA returns end as the day AFTER the last
+        # visible day (DTSTART = inclusive, DTEND = exclusive). Cap the
+        # cursor so we don't include the trailing day.
+        last_day_inclusive = (
+            event.end.date() - timedelta(days=1)
+            if event.all_day
+            else event.end.date()
+        )
+        if last_day_inclusive < first_day:
+            last_day_inclusive = first_day
+        cursor = first_day
+        while cursor <= last_day_inclusive:
+            buckets.setdefault((event.entity_id, cursor), []).append(event)
+            cursor += timedelta(days=1)
 
     # Fill the cache for every (entity_id, day) we asked about. Entries
     # with no events still get cached (empty list) so we don't re-query
-    # for an entity that's just empty for that day.
+    # for an entity that's just empty for that day. Only the requested
+    # `days` are cached — out-of-window expanded entries are not
+    # persisted (avoids the cache ballooning for long-span events).
     fetched_entities = {e for e in entity_ids if e not in result.unreachable}
     for entity_id in fetched_entities:
         for day in days:

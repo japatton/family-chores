@@ -169,6 +169,16 @@ class HABridge(BridgeProtocol):
         self._flush_lock = asyncio.Lock()
         self._backoff = _BACKOFF_INITIAL
 
+    @property
+    def flush_lock(self) -> asyncio.Lock:
+        """Expose the flush lock so the reconciler can serialise its
+        sessions against the bridge worker. H-6 from the v0.5.0
+        ultra-review: without coordination, the periodic reconcile job
+        can `remove_item` a todo the bridge has just `add_item`'d but
+        not yet committed.
+        """
+        return self._flush_lock
+
     # ─── lifecycle ────────────────────────────────────────────────────────
 
     async def start(self) -> None:
@@ -275,11 +285,39 @@ class HABridge(BridgeProtocol):
             if do_approvals:
                 await self._publish_pending_approvals(session)
 
+            # Commit per-instance after each successful todo sync. H-2
+            # from the v0.5.0 ultra-review: a deferred end-of-loop
+            # commit means that if a LATER iteration of this loop
+            # raises, SQLAlchemy's `async with` rolls back the whole
+            # session — including the `ha_todo_uid` writes from
+            # EARLIER successful adds. HA already has those todos;
+            # the DB doesn't know their UIDs; the next flush re-adds
+            # them and we get duplicates until the 15-min reconciler
+            # heals.
+            #
+            # Per-instance commit isolates each sync: a transient HA
+            # failure on instance #5 doesn't roll back the UID we
+            # just claimed for instance #2. The reconciler still
+            # converges; we just no longer create duplicates between
+            # its runs.
             for iid in instances_to_sync:
-                await self._sync_instance_todo(session, iid)
+                try:
+                    await self._sync_instance_todo(session, iid)
+                    await session.commit()
+                except Exception:
+                    # Roll back THIS instance's partial work, requeue
+                    # it for the next flush, log, and continue. The
+                    # outer worker `_run` loop's backoff handles
+                    # back-pressure; we don't propagate here because
+                    # one bad instance shouldn't fail the whole
+                    # flush.
+                    await session.rollback()
+                    log.exception("sync_instance_todo failed for %d; requeuing", iid)
+                    self._dirty_instances.add(iid)
 
-            # Only commit after HA calls succeed — we may have written
-            # `ha_todo_uid` back to instances during todo sync.
+            # Final commit for any sensor/approval mutations that
+            # happen on the same session (currently none — those use
+            # set_state without DB writes — but keep the safety net).
             await session.commit()
 
         for event_type, payload in events_to_fire:

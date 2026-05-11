@@ -24,9 +24,11 @@ and the outward `RedemptionRead` mapping.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC
 from datetime import date as date_type
 from datetime import datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -148,14 +150,30 @@ async def _count_redemptions_this_week(
     reward_id: str,
     member_id: int,
     week_anchor: date_type,
+    tz: str,
     household_id: str | None,
 ) -> int:
     """Count this member's redemptions of this reward in the current
     week_anchor window. Both pending and approved count toward the cap;
     denied don't (since they were refunded). The cap is per-member-per-
-    reward — the scope mirrors how points_this_week is computed."""
-    week_start = datetime.combine(week_anchor, datetime.min.time())
-    week_end = week_start + timedelta(days=7)
+    reward — the scope mirrors how points_this_week is computed.
+
+    `week_anchor` is a local date (the configured week-start). We
+    convert local-midnight → UTC before comparing against
+    `Redemption.requested_at` (stored as naive UTC, per
+    `family_chores_core.time` convention). Without the conversion, a
+    redemption at 11pm Sunday local (= early Monday UTC for tz>UTC)
+    drifts into the wrong week. Was D-2 in the v0.5.0 ultra-review.
+    """
+    zone = ZoneInfo(tz)
+    local_midnight = datetime.combine(
+        week_anchor, datetime.min.time(), tzinfo=zone
+    )
+    # Naive UTC for direct compare with the naive-UTC `requested_at` column.
+    week_start = local_midnight.astimezone(UTC).replace(tzinfo=None)
+    week_end = (
+        (local_midnight + timedelta(days=7)).astimezone(UTC).replace(tzinfo=None)
+    )
     res = await session.execute(
         select(func.count())
         .select_from(Redemption)
@@ -180,7 +198,8 @@ async def request_redemption(
     reward_id: str,
     actor: str,
     week_starts_on: str = "monday",
-    today: date_type | None = None,
+    today: date_type,
+    tz: str,
     household_id: str | None = None,
 ) -> Redemption:
     """Create a `pending_approval` redemption + deduct points.
@@ -188,6 +207,12 @@ async def request_redemption(
     Raises `InvalidStateError` if the member can't afford it OR the
     weekly cap on this reward has been reached. Both cases leave the
     member's points untouched.
+
+    `today` and `tz` are required (no `utcnow().date()` fallback) —
+    previously a `today=None` default silently fell back to UTC date,
+    which would mis-bucket the weekly-cap window in non-UTC families
+    (R-1 from the v0.5.0 ultra-review). Callers pass `local_today(tz)`
+    + the same `tz` they used to compute it.
     """
     member = await _load_member(session, member_id, household_id)
     reward = await _load_reward_active(session, reward_id, household_id)
@@ -200,12 +225,13 @@ async def request_redemption(
         )
 
     if reward.max_per_week is not None:
-        anchor = week_anchor_for(today or utcnow().date(), week_starts_on)
+        anchor = week_anchor_for(today, week_starts_on)
         used = await _count_redemptions_this_week(
             session,
             reward_id=reward.id,
             member_id=member.id,
             week_anchor=anchor,
+            tz=tz,
             household_id=household_id,
         )
         if used >= reward.max_per_week:
