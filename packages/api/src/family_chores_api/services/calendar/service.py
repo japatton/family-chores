@@ -26,8 +26,6 @@ from dataclasses import dataclass, field
 from datetime import UTC
 from datetime import date as date_type
 from datetime import datetime, timedelta
-from typing import Any
-
 from family_chores_api.services.calendar.cache import CalendarCache
 from family_chores_api.services.calendar.prep import PrepItem, extract_prep_items
 from family_chores_api.services.calendar.provider import (
@@ -230,10 +228,3 @@ def hide_past(
     return out
 
 
-def _summarise_for_log(window: CalendarWindow) -> dict[str, Any]:
-    """Small helper used by callers that want to log the result shape
-    without dumping every event."""
-    return {
-        "events": len(window.events),
-        "unreachable": window.unreachable,
-    }

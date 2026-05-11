@@ -35,7 +35,15 @@ from family_chores_api.deps import (
     require_parent,
 )
 from family_chores_api.errors import NotFoundError
-from family_chores_api.events import WSManager
+from family_chores_api.events import (
+    EVT_REDEMPTION_APPROVED,
+    EVT_REDEMPTION_DENIED,
+    EVT_REDEMPTION_REQUESTED,
+    EVT_REWARD_CREATED,
+    EVT_REWARD_DELETED,
+    EVT_REWARD_UPDATED,
+    WSManager,
+)
 from family_chores_api.schemas import (
     RedemptionCreate,
     RedemptionDenyRequest,
@@ -70,13 +78,9 @@ member_redemptions_router = APIRouter(
 )
 
 
-# Event names — wired into the HA bridge for automation hooks.
-EVT_REWARD_CREATED = "reward_created"
-EVT_REWARD_UPDATED = "reward_updated"
-EVT_REWARD_DELETED = "reward_deleted"
-EVT_REDEMPTION_REQUESTED = "redemption_requested"
-EVT_REDEMPTION_APPROVED = "redemption_approved"
-EVT_REDEMPTION_DENIED = "redemption_denied"
+# Event names live in `family_chores_api.events` (imported above so the
+# whole WS-event taxonomy stays in one place). HA-bridge event names
+# stay local — they're addon-specific, not part of the WS protocol.
 
 _HA_EVENT_REDEMPTION_REQUESTED = "family_chores_redemption_requested"
 _HA_EVENT_REDEMPTION_APPROVED = "family_chores_redemption_approved"
