@@ -21,6 +21,7 @@ the FC id anymore, so the backend item looks like an orphan.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import date as date_type
@@ -91,14 +92,43 @@ async def reconcile_once(
     *,
     today: date_type,
     backfill_days: int = RECONCILE_BACKFILL_DAYS,
+    bridge_flush_lock: asyncio.Lock | None = None,
 ) -> ReconcileResult:
     """Tier 1 sweep (DECISIONS §14): now takes a `TodoProvider` rather
     than the HA client directly, so the same reconciler logic runs
     against any backend conforming to the Protocol (HA, Google Tasks,
     a future SaaS in-app store, etc.). Existing callers wrap the
     `HAClient` in `HATodoProvider`.
+
+    `bridge_flush_lock` (optional) coordinates with `HABridge` so the
+    reconciler and the bridge worker never mutate the same
+    `(member, todo backend)` state concurrently. H-6 from the v0.5.0
+    ultra-review: without this, the reconciler can orphan-delete a
+    todo that the bridge has *just added* but not yet committed —
+    the bridge sees a vanished UID seconds after creation. The
+    proper fix is H-new-B (move reconciler INTO the bridge worker);
+    this is the in-place hot-fix for v0.6.0.
+
+    Pass `None` in tests / contexts that don't have a bridge.
     """
     result = ReconcileResult()
+    if bridge_flush_lock is not None:
+        async with bridge_flush_lock:
+            return await _reconcile_under_lock(
+                todos, session_factory, today, backfill_days, result
+            )
+    return await _reconcile_under_lock(
+        todos, session_factory, today, backfill_days, result
+    )
+
+
+async def _reconcile_under_lock(
+    todos: TodoProvider,
+    session_factory: async_sessionmaker[AsyncSession],
+    today: date_type,
+    backfill_days: int,
+    result: ReconcileResult,
+) -> ReconcileResult:
     async with session_factory() as session:
         members_res = await session.execute(
             select(Member).where(Member.ha_todo_entity_id.is_not(None))

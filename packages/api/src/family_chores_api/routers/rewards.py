@@ -304,6 +304,7 @@ async def create_redemption(
         actor=user,
         week_starts_on=week_starts_on,
         today=local_today(tz),
+        tz=tz,
         household_id=household_id,
     )
     await session.commit()

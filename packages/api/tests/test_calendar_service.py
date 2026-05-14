@@ -300,6 +300,92 @@ async def test_multi_day_window_caches_each_day_separately():
     assert follow.events == []  # day 2 had no events.
 
 
+@pytest.mark.asyncio
+async def test_multi_day_event_appears_on_every_covered_day():
+    """D-1 regression (ultra-review): a single event that spans
+    multiple days must surface on every day in the requested window,
+    not just the start day. Pre-fix this test fails: the event was
+    bucketed under (entity, event.start.date()) only, so subsequent
+    single-day queries for days 2..N returned `[]` from cache (a hit,
+    not a miss) and never re-fetched."""
+    spring_break = RawEvent(
+        entity_id="calendar.family",
+        summary="Spring Break",
+        description=None,
+        # All-day event Apr 7 → Apr 14 (HA convention: end is the day
+        # AFTER the last visible day, so 7 days are visible).
+        start=datetime(2026, 4, 7, tzinfo=UTC),
+        end=datetime(2026, 4, 14, tzinfo=UTC),
+        all_day=True,
+    )
+    provider = _FakeProvider(
+        responses=[CalendarProviderResult(events=[spring_break])]
+    )
+    cache = CalendarCache()
+
+    # Initial multi-day fetch covering the whole span.
+    await get_events_for_window(
+        provider, cache, entity_ids=["calendar.family"],
+        from_dt=datetime(2026, 4, 7, tzinfo=UTC),
+        to_dt=datetime(2026, 4, 14, tzinfo=UTC),
+    )
+
+    # Query each day in the span individually — every day should return
+    # the event (served from cache, no extra provider calls).
+    for day_offset in range(7):
+        day_start = datetime(2026, 4, 7 + day_offset, tzinfo=UTC)
+        follow = await get_events_for_window(
+            provider,
+            cache,
+            entity_ids=["calendar.family"],
+            from_dt=day_start,
+            to_dt=day_start + timedelta(hours=23, minutes=59),
+        )
+        assert len(follow.events) == 1, (
+            f"day {day_offset} (Apr {7 + day_offset}): "
+            f"expected Spring Break visible, got {[e.summary for e in follow.events]}"
+        )
+        assert follow.events[0].summary == "Spring Break"
+    # Provider should have been called exactly once (the initial fetch).
+    assert len(provider.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_multi_day_timed_event_spanning_midnight():
+    """Timed events that cross midnight (rare but possible — e.g. a
+    late-night party Sat 10pm → Sun 1am) also need to appear on both
+    days. Same fix as the all-day path; verifying separately because
+    HA's end-as-exclusive convention only applies to all-day events."""
+    party = RawEvent(
+        entity_id="calendar.kid",
+        summary="Late party",
+        description=None,
+        start=datetime(2026, 5, 10, 22, 0, tzinfo=UTC),
+        end=datetime(2026, 5, 11, 1, 0, tzinfo=UTC),
+        all_day=False,
+    )
+    provider = _FakeProvider(
+        responses=[CalendarProviderResult(events=[party])]
+    )
+    cache = CalendarCache()
+
+    await get_events_for_window(
+        provider, cache, entity_ids=["calendar.kid"],
+        from_dt=datetime(2026, 5, 10, tzinfo=UTC),
+        to_dt=datetime(2026, 5, 11, 23, 59, tzinfo=UTC),
+    )
+
+    # Both days should surface the event.
+    for day in (datetime(2026, 5, 10, tzinfo=UTC), datetime(2026, 5, 11, tzinfo=UTC)):
+        follow = await get_events_for_window(
+            provider, cache, entity_ids=["calendar.kid"],
+            from_dt=day,
+            to_dt=day + timedelta(hours=23, minutes=59),
+        )
+        assert len(follow.events) == 1, f"day {day.date()}: lost the late party"
+    assert len(provider.calls) == 1
+
+
 # ─── partition_by_member ─────────────────────────────────────────────────
 
 
