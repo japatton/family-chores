@@ -18,8 +18,6 @@ Endpoints:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +29,7 @@ from family_chores_api.deps import (
     get_session,
     require_parent,
 )
+from family_chores_core.time import utcnow
 from family_chores_api.schemas import (
     HouseholdSettingsRead,
     HouseholdSettingsUpdate,
@@ -114,7 +113,7 @@ async def update_settings(
         new = list(body.shared_calendar_entity_ids)
         if old != new:
             settings.shared_calendar_entity_ids = new
-            settings.updated_at = datetime.now(UTC)
+            settings.updated_at = utcnow()
             changes["shared_calendar_entity_ids"] = {"old": old, "new": new}
 
     if changes:

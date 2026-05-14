@@ -5,8 +5,7 @@ when `AuthStrategy` was introduced. Submodule layout:
 
   - `auth.py`     — `AuthStrategy` Protocol, `Identity`, `ParentIdentity`,
                     plus historic shims (`get_remote_user`, `maybe_parent`,
-                    `require_parent`, `require_role`) that delegate to the
-                    strategy.
+                    `require_parent`) that delegate to the strategy.
   - `bridge.py`   — `get_bridge`.
   - `db.py`       — `get_session`.
   - `runtime.py`  — `get_jwt_secret`, `get_effective_timezone`,
@@ -27,7 +26,6 @@ from family_chores_api.deps.auth import (
     get_remote_user,
     maybe_parent,
     require_parent,
-    require_role,
 )
 from family_chores_api.deps.bridge import get_bridge
 from family_chores_api.deps.calendar import get_calendar_cache, get_calendar_provider
@@ -54,7 +52,6 @@ __all__ = [
     "get_remote_user",
     "maybe_parent",
     "require_parent",
-    "require_role",
     # State / runtime deps
     "get_bridge",
     "get_calendar_cache",

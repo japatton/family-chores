@@ -9,7 +9,9 @@ another APIRouter; the WSManager singleton lives in `family_chores_api.events`.)
 from family_chores_api.routers import (
     admin,
     auth,
+    calendar,
     chores,
+    household,
     instances,
     members,
     rewards,
@@ -20,7 +22,9 @@ from family_chores_api.routers import (
 __all__ = [
     "admin",
     "auth",
+    "calendar",
     "chores",
+    "household",
     "instances",
     "members",
     "rewards",

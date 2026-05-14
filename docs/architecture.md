@@ -55,7 +55,7 @@ family_chores  apps/saas    apps/web
 This is enforced by two CI tests:
 
 - **`tests/test_dependency_arrows.py`** — reads every package's `pyproject.toml` and verifies the `dependencies:` list doesn't violate the arrow. `packages/core` can depend on nothing in this tree. `packages/db` can depend on `packages/core`. `packages/api` can depend on both. Nothing in `packages/*` can import `family_chores_addon` or anything under `apps/`.
-- **`tests/test_packages_clean.py`** — greps `packages/` for HA-specific strings (`homeassistant`, `SUPERVISOR_TOKEN`, `hassio`, etc.) and fails if any leak in.
+- **`tests/test_packages_clean.py`** — greps `packages/api` and `packages/core` for HA-specific strings (`supervisor`, `X-Ingress`, `X-Remote-User`, `HA_TOKEN`, `SUPERVISOR_TOKEN`) and fails if any leak in.
 
 Both tests run in CI on every PR. Violate the arrow and CI fails before review starts.
 

@@ -40,7 +40,7 @@ from family_chores_api.deps import (
     require_parent,
 )
 from family_chores_api.errors import NotFoundError
-from family_chores_api.events import EVT_INSTANCE_UPDATED, WSManager
+from family_chores_api.events import EVT_INSTANCE_UPDATED, EVT_MEMBER_UPDATED, WSManager
 from family_chores_api.schemas import (
     AdjustPointsRequest,
     CalendarEventRead,
@@ -333,7 +333,7 @@ async def adjust_points(
     )
     await session.commit()
     bridge.notify_member_dirty(member_id)
-    await ws.broadcast({"type": "member_updated", "member_id": member_id})
+    await ws.broadcast({"type": EVT_MEMBER_UPDATED, "member_id": member_id})
     return MemberStatsRead(
         points_total=stats.points_total,
         points_this_week=stats.points_this_week,

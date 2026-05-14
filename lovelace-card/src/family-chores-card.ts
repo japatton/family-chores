@@ -76,6 +76,12 @@ function discoverMembers(hass: HomeAssistant): MemberRow[] {
     if (!entityId.startsWith(POINTS_ENTITY_PREFIX)) continue
     if (!entityId.endsWith(POINTS_ENTITY_SUFFIX)) continue
     const state = hass.states[entityId]
+    // Skip rows the addon isn't currently publishing — when the addon
+    // is offline (or just restarting), HA's sensor goes `unavailable`
+    // and `Number.parseInt('unavailable', 10)` would render as `0`,
+    // making the card show every kid at zero points. Better to hide
+    // the row entirely so the addon-offline state is visually obvious.
+    if (state.state === 'unavailable' || state.state === 'unknown') continue
     const slug = entityId.slice(
       POINTS_ENTITY_PREFIX.length,
       entityId.length - POINTS_ENTITY_SUFFIX.length,
@@ -166,12 +172,23 @@ export class FamilyChoresCard extends LitElement {
         font-size: 0.7rem;
         font-weight: 800;
         color: var(--primary-text-color);
+        /* position: relative so the ::after mask is positioned
+         * relative to this element, not the nearest positioned
+         * ancestor. Without it the inner disc paints off-centre on
+         * HA dark theme.
+         */
+        position: relative;
         background:
           conic-gradient(var(--primary-color) calc(var(--pct) * 1%), var(--divider-color) 0);
       }
       .ring::after {
         content: '';
         position: absolute;
+        /* Centre via 50/50 translate — position: absolute on its own
+         * would top-left-anchor. */
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
         width: calc(var(--size) - 6px);
         height: calc(var(--size) - 6px);
         border-radius: 50%;

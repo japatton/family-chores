@@ -14,9 +14,9 @@ The deployment target's lifespan attaches a concrete strategy to
 `app.state.auth_strategy`. `get_auth_strategy(request)` reads it back.
 
 **Backward-compat shims** (`get_remote_user`, `maybe_parent`,
-`require_parent`, `require_role`) preserve the historical dep names that
-every router uses today, but are now thin wrappers that delegate through
-the strategy. This keeps the routers untouched while ensuring every
+`require_parent`) preserve the historical dep names that every router
+uses today, but are now thin wrappers that delegate through the
+strategy. This keeps the routers untouched while ensuring every
 deployment target's auth contract actually flows through `AuthStrategy`
 (otherwise a `PlaceholderAuthStrategy` could be installed and the routers
 would still happily read the remote-user header directly — defeating the point).
@@ -28,13 +28,12 @@ place from step 5.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Protocol, cast
 
 from fastapi import Depends, Request
 
-from family_chores_api.errors import AuthRequiredError, ForbiddenError
+from family_chores_api.errors import AuthRequiredError
 from family_chores_api.security import ParentClaim
 
 
@@ -135,17 +134,3 @@ async def require_parent(
     return ParentClaim(user=parent.user_key, exp=parent.expires_at)
 
 
-def require_role(role: str) -> Callable[..., Awaitable[ParentClaim]]:
-    """Factory that returns a dep enforcing a specific role.
-
-    Parent is the only role today; the factory exists so future service-
-    token / household-admin roles can be added without rewriting every
-    router that currently does `Depends(require_parent)`.
-    """
-
-    async def _dep(claim: ParentClaim = Depends(require_parent)) -> ParentClaim:
-        if role == "parent":
-            return claim
-        raise ForbiddenError(f"unknown role {role}")
-
-    return _dep

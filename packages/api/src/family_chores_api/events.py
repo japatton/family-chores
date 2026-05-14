@@ -31,6 +31,15 @@ EVT_PIN_CLEARED = "pin_cleared"
 
 EVT_STATS_REBUILT = "stats_rebuilt"
 
+# Reward catalogue (DECISIONS §16) — defined here so the WS-event taxonomy
+# stays in one place. Routers/rewards.py re-exports for backwards-compat.
+EVT_REWARD_CREATED = "reward_created"
+EVT_REWARD_UPDATED = "reward_updated"
+EVT_REWARD_DELETED = "reward_deleted"
+EVT_REDEMPTION_REQUESTED = "redemption_requested"
+EVT_REDEMPTION_APPROVED = "redemption_approved"
+EVT_REDEMPTION_DENIED = "redemption_denied"
+
 
 class WSManager:
     def __init__(self) -> None:
